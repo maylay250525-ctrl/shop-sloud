@@ -5,26 +5,31 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ဈေးဆိုင်</title>
 <style>
-:root{--bg:#f7f3ec;--card:#fff;--text:#222;--muted:#777;--accent:#0d7a4f;--accent2:#e8a13a;--line:#e5ddd0}
-body.dark{--bg:#1a1a1a;--card:#262626;--text:#f0f0f0;--muted:#aaa;--line:#444}
+:root{--bg:#faf6ee;--card:#fff;--text:#222;--muted:#8a8378;--accent:#0e7a4d;--accent2:#f59e0b;--line:#eee5d5;--shadow:0 2px 14px rgba(60,45,20,.07)}
+body.dark{--bg:#16181d;--card:#23262e;--text:#f0f0f0;--muted:#9aa0ae;--line:#343842;--shadow:0 2px 14px rgba(0,0,0,.35)}
 *{box-sizing:border-box}
-body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);padding-bottom:70px}
-header{position:sticky;top:0;background:var(--card);border-bottom:1px solid var(--line);padding:10px 14px;display:flex;gap:8px;align-items:center;z-index:10;flex-wrap:wrap}
-header h1{font-size:19px;margin:0;flex:1}
-button{cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:8px;padding:8px 12px;font-size:14px}
-button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);padding-bottom:76px}
+header{position:sticky;top:0;background:linear-gradient(135deg,#0e7a4d,#12a150);padding:12px 14px;display:flex;gap:8px;align-items:center;z-index:10;flex-wrap:wrap;box-shadow:0 2px 12px rgba(14,122,77,.35)}
+header h1{font-size:20px;margin:0;flex:1;color:#fff}
+header button{background:rgba(255,255,255,.18);color:#fff;border-color:rgba(255,255,255,.4)}
+button{cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:12px;padding:10px 14px;font-size:14px;font-weight:600}
+button.primary{background:linear-gradient(135deg,#0e7a4d,#12a150);color:#fff;border-color:transparent;box-shadow:0 2px 8px rgba(14,122,77,.35)}
 button.warn{background:#b3261e;color:#fff;border-color:#b3261e}
-input,select,textarea{width:100%;padding:9px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--text);font-size:14px;margin:4px 0}
+input,select,textarea{width:100%;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--text);font-size:15px;margin:5px 0}
+input:disabled{opacity:.65}
 main{max-width:960px;margin:0 auto;padding:14px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:14px;box-shadow:var(--shadow)}
+.card h2{margin:0 0 10px;font-size:18px}
+.card h3{margin:14px 0 6px;font-size:15px}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
-.prod{border:1px solid var(--line);border-radius:10px;padding:10px}
-.prod h3{margin:0 0 4px;font-size:15px}
-.price{color:var(--accent);font-weight:700}
+.prod{border:1px solid var(--line);border-radius:16px;padding:10px;display:flex;flex-direction:column;background:var(--card)}
+.prod-emoji{font-size:46px;text-align:center;padding:16px 0 12px;border-radius:12px;margin-bottom:8px}
+.prod h3{margin:0;font-size:15px;flex:1}
+.price{color:var(--accent);font-weight:800;font-size:16px;margin:4px 0}
 .muted{color:var(--muted);font-size:13px}
 .chips{display:flex;gap:6px;overflow-x:auto;padding:6px 0 2px;-webkit-overflow-scrolling:touch}
-.chips button{flex:0 0 auto;border-radius:20px}
-.chips button.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.chips button{flex:0 0 auto;border-radius:20px;padding:8px 14px}
+.chips button.active{background:linear-gradient(135deg,#0e7a4d,#12a150);color:#fff;border-color:transparent}
 table{width:100%;border-collapse:collapse;font-size:14px}
 th,td{border-bottom:1px solid var(--line);padding:7px 5px;text-align:left;vertical-align:top}
 .badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:12px;background:#eee;color:#333}
@@ -32,22 +37,66 @@ th,td{border-bottom:1px solid var(--line);padding:7px 5px;text-align:left;vertic
 .badge.rejected,.badge.cancelled{background:#f8d7da;color:#721c24}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .hidden{display:none}
-.notice{background:#fff3cd;color:#7a5b00;border-radius:8px;padding:10px;margin:8px 0}
-#bottomNav{position:fixed;left:0;right:0;bottom:0;z-index:20;display:flex;background:var(--card);border-top:1px solid var(--line);padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
-#bottomNav button{flex:1;border:0;background:none;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:12px;padding:6px 2px;color:var(--muted);position:relative}
-#bottomNav button.active{color:var(--accent);font-weight:700}
-#bottomNav button .ic{font-size:20px;line-height:1}
-.navbadge{position:absolute;top:0;right:calc(50% - 24px);background:#b3261e;color:#fff;border-radius:20px;font-size:11px;padding:1px 6px}
+.notice{background:#fff8e1;border-left:4px solid var(--accent2);border-radius:10px;padding:10px 12px;margin:8px 0;color:#7a5b00}
+body.dark .notice{background:#3a3220;color:#f0d9a0}
+#wBalance{font-size:22px;margin:8px 0}
+#wBalance b{color:var(--accent)}
+.favbtn{border:0;background:none;font-size:20px;color:var(--accent2);padding:2px 6px}
+.addbtn{width:100%;margin-top:10px}
+#bottomNav{position:fixed;left:0;right:0;bottom:0;z-index:20;display:flex;background:var(--card);border-top:1px solid var(--line);padding:8px 6px calc(8px + env(safe-area-inset-bottom));box-shadow:0 -4px 16px rgba(60,45,20,.08);border-radius:16px 16px 0 0}
+#bottomNav button{flex:1;border:0;background:none;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:12px;padding:8px 2px;color:var(--muted);position:relative;border-radius:12px}
+#bottomNav button.active{color:var(--accent);font-weight:800;background:#e9f7ef}
+body.dark #bottomNav button.active{background:#1d3a2c}
+#bottomNav button .ic{font-size:22px;line-height:1}
+.navbadge{position:absolute;top:2px;right:calc(50% - 24px);background:#e11d48;color:#fff;border-radius:20px;font-size:11px;padding:1px 6px;font-weight:700}
+#authScreen{min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:32px 16px;background:linear-gradient(160deg,#0e7a4d,#0b5e3c 55%,#084d31)}
+.auth-card{background:#fff;color:#222;border-radius:24px;padding:28px 22px;max-width:400px;width:100%;box-shadow:0 16px 48px rgba(0,0,0,.3);text-align:center;margin-top:4vh}
+.auth-card input{background:#fff;color:#222;border-color:#e5ddd0}
+.auth-logo{font-size:60px;line-height:1}
+.auth-card h1{margin:8px 0 4px;font-size:26px}
+.auth-tabs{display:flex;gap:8px;margin:18px 0 14px}
+.auth-tabs button{flex:1;border-radius:999px;padding:10px}
+.auth-tabs button.active{background:linear-gradient(135deg,#0e7a4d,#12a150);color:#fff;border-color:transparent}
+.auth-err{color:#b3261e;font-size:13px;min-height:18px;margin-top:8px}
+.auth-link{background:none;border:0;color:var(--accent);font-size:13px;margin-top:12px;text-decoration:underline;padding:4px}
 </style>
 </head>
 <body>
-<header>
+<!-- ============ LOGIN / REGISTER ============ -->
+<div id="authScreen" class="hidden">
+  <div class="auth-card">
+    <div class="auth-logo">🛒</div>
+    <h1>ဈေးဆိုင်</h1>
+    <p class="muted">Login ဝင်မှ ဈေးဝယ်လို့ရမယ် — တစ်ခါဝင်ပြီးရင် ၄၈ နာရီ ခံမယ်</p>
+    <div class="auth-tabs">
+      <button id="tabLogin" class="active" onclick="showAuth('login')">Login / ဝင်မည်</button>
+      <button id="tabRegister" onclick="showAuth('register')">Register / အကောင့်ဖွင့်မည်</button>
+    </div>
+    <div id="loginForm">
+      <input id="liPhone" placeholder="ဖုန်း / Phone" inputmode="tel">
+      <input id="liPass" type="password" placeholder="Password">
+      <button class="primary" id="loginBtn" style="width:100%">ဝင်မည်</button>
+      <div id="loginErr" class="auth-err"></div>
+      <button class="auth-link" onclick="showAuth('register')">အကောင့်မရှိသေးဘူးလား? Register လုပ်မယ်</button>
+    </div>
+    <div id="registerForm" class="hidden">
+      <input id="rgName" placeholder="နာမည် / Name">
+      <input id="rgPhone" placeholder="ဖုန်း / Phone" inputmode="tel">
+      <input id="rgPass" type="password" placeholder="Password (အနည်းဆုံး ၄ လုံး)">
+      <button class="primary" id="registerBtn" style="width:100%">Register လုပ်မည်</button>
+      <div id="registerErr" class="auth-err"></div>
+      <button class="auth-link" onclick="showAuth('login')">အကောင့်ရှိပြီးသားလား? Login ဝင်မယ်</button>
+    </div>
+  </div>
+</div>
+
+<header id="shopHeader" class="hidden">
   <h1>🛒 <span data-t="shop">ဈေးဆိုင်</span></h1>
   <button id="langBtn">English</button>
   <button id="themeBtn">🌙</button>
   <button id="cartBtn">🛒 <span id="cartBadge" class="badge hidden">0</span></button>
 </header>
-<main>
+<main id="shopMain" class="hidden">
   <!-- ============ SHOP VIEW ============ -->
   <div id="shopView">
     <div class="card">
@@ -66,7 +115,7 @@ th,td{border-bottom:1px solid var(--line);padding:7px 5px;text-align:left;vertic
       <div id="checkout" class="hidden">
         <h3 data-t="checkout">မှာယူမည် (Checkout)</h3>
         <input id="coName" placeholder="နာမည် / Name">
-        <input id="coPhone" placeholder="ဖုန်း / Phone">
+        <input id="coPhone" placeholder="ဖုန်း / Phone" disabled>
         <input id="coAddress" placeholder="လိပ်စာ / Address">
         <select id="coTownship"></select>
         <select id="coPay"><option value="cash">ငွေသားဖြင့် ပေးမည် (Cash)</option><option value="wallet">Wallet ဖြင့် ပေးမည်</option></select>
@@ -81,7 +130,7 @@ th,td{border-bottom:1px solid var(--line);padding:7px 5px;text-align:left;vertic
   <div id="walletView" class="hidden">
     <div class="card">
       <h2 data-t="wallet">Wallet — ငွေဖြည့်မည်</h2>
-      <input id="wPhone" placeholder="ဖုန်း / Phone">
+      <input id="wPhone" placeholder="ဖုန်း / Phone" disabled>
       <div id="wBalance" class="muted"></div>
       <div id="wLedger"></div>
       <h3 data-t="topup">ငွေဖြည့်မည် (Top-up)</h3>
@@ -89,7 +138,7 @@ th,td{border-bottom:1px solid var(--line);padding:7px 5px;text-align:left;vertic
       <select id="tMethod"><option value="kpay">KBZPay</option><option value="wavepay">WavePay</option></select>
       <div id="recipientBox" class="notice hidden"></div>
       <input id="tName" placeholder="ငွေလွှဲသူ နာမည်">
-      <input id="tPhone" placeholder="ငွေလွှဲသူ ဖုန်း">
+      <input id="tPhone" placeholder="ငွေလွှဲသူ ဖုန်း" disabled>
       <input id="tTxn" placeholder="ငွေလွှဲ ID / Transfer ID">
       <button class="primary" id="tSubmit" data-t="sendTopup">ပို့မည်</button>
       <div id="tMsg"></div>
@@ -103,8 +152,8 @@ th,td{border-bottom:1px solid var(--line);padding:7px 5px;text-align:left;vertic
     <div class="card">
       <h2 data-t="profile">Profile — ပရိုဖိုင်</h2>
       <div id="profileSummary"></div>
-      <input id="pName" placeholder="နာမည် / Name">
-      <input id="pPhone" placeholder="ဖုန်း / Phone">
+      <input id="pName" placeholder="နာမည် / Name" disabled>
+      <input id="pPhone" placeholder="ဖုန်း / Phone" disabled>
       <input id="pAddress" placeholder="လိပ်စာ / Address">
       <div class="row"><img id="pPhotoPrev" class="hidden" style="width:72px;height:72px;object-fit:cover;border-radius:50%"><input id="pPhoto" type="file" accept="image/*" style="flex:1"></div>
       <button class="primary" id="pSave" data-t="saveProfile">သိမ်းမည်</button>
@@ -115,12 +164,13 @@ th,td{border-bottom:1px solid var(--line);padding:7px 5px;text-align:left;vertic
 
     <div class="card">
       <h2 data-t="orders">ကျွန်ုပ်၏ အော်ဒါများ</h2>
-      <div class="row"><input id="oPhone" placeholder="ဖုန်း / Phone" style="flex:1"><button id="oCheck">ကြည့်မည်</button></div>
       <div id="myOrders"></div>
     </div>
+
+    <button class="warn" id="logoutBtn" style="width:100%">🚪 Logout / ထွက်မည်</button>
   </div>
 </main>
-<nav id="bottomNav">
+<nav id="bottomNav" class="hidden">
   <button data-view="shop" class="active"><span class="ic">🏠</span><span data-t="navShop">ဆိုင်</span></button>
   <button data-view="cart"><span class="ic">🛒</span><span data-t="navCart">ခြင်းတောင်း</span><span id="navCartBadge" class="navbadge hidden">0</span></button>
   <button data-view="wallet"><span class="ic">💰</span><span data-t="navWallet">Wallet</span></button>
@@ -129,6 +179,7 @@ th,td{border-bottom:1px solid var(--line);padding:7px 5px;text-align:left;vertic
 <script>
 const $=s=>document.querySelector(s);
 let lang='my', products=[], zones=[], settings={}, cart={}, selectedCat='', favs=JSON.parse(localStorage.getItem('favs')||'[]');
+let authUser=null, authToken=localStorage.getItem('shopToken')||'';
 const T={
  my:{shop:'ဈေးဆိုင်',cart:'ခြင်းတောင်း (Cart)',checkout:'မှာယူမည် (Checkout)',order:'မှာယူမည်',wallet:'Wallet — ငွေဖြည့်မည်',topup:'ငွေဖြည့်မည် (Top-up)',sendTopup:'ပို့မည်',myTopups:'ကျွန်ုပ်၏ တောင်းဆိုမှုများ',orders:'ကျွန်ုပ်၏ အော်ဒါများ',profile:'Profile — ပရိုဖိုင်',saveProfile:'သိမ်းမည်',myFavs:'ကျွန်ုပ်၏ အကြိုက်များ',copyPhone:'📋 ကူးမည်',navShop:'ဆိုင်',navCart:'ခြင်းတောင်း',navWallet:'Wallet',navProfile:'Profile',all:'အားလုံး'},
  en:{shop:'Shop',cart:'Cart',checkout:'Checkout',order:'Place Order',wallet:'Wallet — Top-up',topup:'Top-up',sendTopup:'Submit',myTopups:'My top-up requests',orders:'My orders',profile:'Profile',saveProfile:'Save',myFavs:'My favourites',copyPhone:'📋 Copy',navShop:'Shop',navCart:'Cart',navWallet:'Wallet',navProfile:'Profile',all:'All'}};
@@ -136,12 +187,24 @@ function t(k){return (T[lang]||T.my)[k]||k}
 function fmt(n){return Number(n).toLocaleString()+' Ks'}
 function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 
-async function api(p,o={}){const r=await fetch(p,{...o,headers:{'Content-Type':'application/json',...(o.headers||{})}});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||r.status);return j}
+const EMOJI={p01:'🍚',p02:'🫗',p03:'🥚',p04:'🥛',p05:'🍞',p06:'🍜',p07:'🍬',p08:'🧂',p09:'🍵',p10:'☕',p11:'🍌',p12:'🍎',p13:'🍅',p14:'🧅',p15:'🥔',p16:'🍗',p17:'🥩',p18:'🐟',p19:'🧼',p20:'🪥'};
+const CAT_TINT={'စားသောက်ကုန်':'#e9f7ef','အသီးအနှံ':'#fff1e3','အသား/ငါး':'#fdecec','အိမ်သုံးပစ္စည်း':'#eef2ff'};
+function prodEmoji(p){return EMOJI[p.id]||(p.category==='အသီးအနှံ'?'🍎':p.category==='အသား/ငါး'?'🥩':p.category==='အိမ်သုံးပစ္စည်း'?'🧺':'🛒')}
+function catTint(p){return CAT_TINT[p.category]||'#eef2f0'}
+
+function authHeaders(){return authToken?{Authorization:'Bearer '+authToken}:{}}
+async function api(p,o={}){
+  const r=await fetch(p,{...o,headers:{'Content-Type':'application/json',...authHeaders(),...((o&&o.headers)||{})}});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok){if(r.status===401&&j.error==='login required')logout();throw new Error(j.error||r.status)}
+  return j;
+}
 
 function showView(v){
   ['shop','cart','wallet','profile'].forEach(x=>$('#'+x+'View').classList.toggle('hidden',x!==v));
   document.querySelectorAll('#bottomNav button').forEach(b=>b.classList.toggle('active',b.dataset.view===v));
   if(v==='wallet'&&typeof loadWallet==='function')loadWallet();
+  if(v==='profile'&&typeof loadMyOrders==='function')loadMyOrders();
   window.scrollTo({top:0});
 }
 document.querySelectorAll('#bottomNav button').forEach(b=>b.addEventListener('click',()=>showView(b.dataset.view)));
@@ -159,6 +222,9 @@ async function loadShop(){
 }
 // Silent auto-refresh: re-fetch products, zones and settings every 15s.
 // Only re-renders lists/prices/fees — never touches what the user is typing.
+let refreshTimer=null;
+function startRefresh(){stopRefresh();refreshTimer=setInterval(refreshShop,15000)}
+function stopRefresh(){if(refreshTimer){clearInterval(refreshTimer);refreshTimer=null}}
 async function refreshShop(){
   try{
     products=await api('/api/products');
@@ -174,7 +240,6 @@ async function refreshShop(){
   }catch(e){}
 }
 $('#refreshBtn').addEventListener('click',refreshShop);
-setInterval(refreshShop,15000);
 function renderProducts(){
   const q=($('#search').value||'').toLowerCase();
   const list=products.filter(p=>{
@@ -182,7 +247,7 @@ function renderProducts(){
     const cat=lang==='en'?p.categoryEn:p.category;
     return nm.includes(q)&&(!selectedCat||cat===selectedCat);
   });
-  $('#products').innerHTML=list.map(p=>`<div class="prod"><h3>${esc(lang==='en'?p.nameEn:p.name)}</h3><div class="muted">${esc(lang==='en'?p.categoryEn:p.category)} · stock ${p.stock}</div><div class="price">${fmt(p.price)}</div><div class="row"><button onclick="addCart('${p.id}')">+ Cart</button><button onclick="toggleFav('${p.id}')">${favs.includes(p.id)?'★':'☆'}</button></div></div>`).join('')||'<p class="muted">—</p>';
+  $('#products').innerHTML=list.map(p=>`<div class="prod"><div class="prod-emoji" style="background:${catTint(p)}">${prodEmoji(p)}</div><div class="row"><h3>${esc(lang==='en'?p.nameEn:p.name)}</h3><button class="favbtn" onclick="toggleFav('${p.id}')">${favs.includes(p.id)?'★':'☆'}</button></div><div class="muted">${esc(lang==='en'?p.categoryEn:p.category)} · stock ${p.stock}</div><div class="price">${fmt(p.price)}</div><button class="primary addbtn" onclick="addCart('${p.id}')">+ Cart</button></div>`).join('')||'<p class="muted">—</p>';
 }
 window.addCart=id=>{cart[id]=(cart[id]||0)+1;renderCart()};
 window.toggleFav=id=>{favs=favs.includes(id)?favs.filter(x=>x!==id):[...favs,id];localStorage.setItem('favs',JSON.stringify(favs));renderProducts();renderFavs()};
@@ -210,11 +275,74 @@ $('#placeOrder').addEventListener('click',async()=>{
     const items=Object.entries(cart).map(([productId,qty])=>({productId,qty}));
     const o=await api('/api/orders',{method:'POST',body:JSON.stringify({customerName:$('#coName').value,phone:$('#coPhone').value,address:$('#coAddress').value,township:$('#coTownship').value,items,paymentMethod:$('#coPay').value})});
     $('#orderMsg').innerHTML=`<div class="notice">✅ Order ${o.id} — Total ${fmt(o.total)} · Status: ${o.status}</div>`;
-    cart={}; renderCart(); loadShop();
+    cart={}; renderCart(); loadShop(); loadMyOrders();
   }catch(e){$('#orderMsg').innerHTML=`<div class="notice">❌ ${esc(e.message)}</div>`}
 });
 </script>
 <script>
+// ---- Auth: login gate, 48h session, logout ----
+function tokenPayload(){
+  try{
+    const parts=(authToken||'').split('.');
+    if(parts.length!==2)return null;
+    let s=parts[0].replace(/-/g,'+').replace(/_/g,'/');
+    while(s.length%4)s+='=';
+    return JSON.parse(atob(s));
+  }catch(e){return null}
+}
+function isTokenUsable(){const p=tokenPayload();return !!(p&&p.exp&&p.exp>Date.now()+60000)}
+function showAuth(mode){
+  $('#authScreen').classList.remove('hidden');
+  $('#shopHeader').classList.add('hidden');$('#shopMain').classList.add('hidden');$('#bottomNav').classList.add('hidden');
+  const reg=mode==='register';
+  $('#loginForm').classList.toggle('hidden',reg);
+  $('#registerForm').classList.toggle('hidden',!reg);
+  $('#tabLogin').classList.toggle('active',!reg);
+  $('#tabRegister').classList.toggle('active',reg);
+  $('#loginErr').textContent='';$('#registerErr').textContent='';
+}
+window.showAuth=showAuth;
+function showShop(){
+  $('#authScreen').classList.add('hidden');
+  $('#shopHeader').classList.remove('hidden');$('#shopMain').classList.remove('hidden');$('#bottomNav').classList.remove('hidden');
+  showView('shop');
+}
+function syncAccountProfile(){
+  if(!authUser)return;
+  profile.name=authUser.name;profile.phone=authUser.phone;
+  localStorage.setItem('profile',JSON.stringify(profile));
+}
+function saveSession(token,user){
+  authToken=token;authUser=user;localStorage.setItem('shopToken',token);
+  syncAccountProfile();
+  showShop();renderProfile();loadShop();startRefresh();
+}
+function logout(){
+  authToken='';authUser=null;localStorage.removeItem('shopToken');
+  cart={};renderCart();stopRefresh();
+  showAuth('login');
+}
+function authErrText(e){
+  const m=String((e&&e.message)||'');
+  if(m.includes('phone already registered'))return 'ဒီဖုန်းနံပါတ်နဲ့ အကောင့်ရှိပြီးသား — Login ဝင်ပါ';
+  if(m.includes('wrong phone or password'))return 'ဖုန်း (သို့) Password မှားနေတယ်';
+  if(m.includes('name, phone and password'))return 'နာမည်၊ ဖုန်းနဲ့ Password (အနည်းဆုံး ၄ လုံး) ထည့်ပေးပါ';
+  return m||'Error';
+}
+$('#loginBtn').addEventListener('click',async()=>{
+  try{
+    const r=await api('/api/auth/login',{method:'POST',body:JSON.stringify({phone:$('#liPhone').value.trim(),password:$('#liPass').value})});
+    saveSession(r.token,r.user);
+  }catch(e){$('#loginErr').textContent=authErrText(e)}
+});
+$('#registerBtn').addEventListener('click',async()=>{
+  try{
+    const r=await api('/api/auth/register',{method:'POST',body:JSON.stringify({name:$('#rgName').value.trim(),phone:$('#rgPhone').value.trim(),password:$('#rgPass').value})});
+    saveSession(r.token,r.user);
+  }catch(e){$('#registerErr').textContent=authErrText(e)}
+});
+$('#logoutBtn').addEventListener('click',()=>{logout()});
+
 // ---- Wallet / top-up ----
 $('#tMethod').addEventListener('change',showRecipient);
 function showRecipient(){
@@ -231,41 +359,49 @@ $('#tSubmit').addEventListener('click',async()=>{
   }catch(e){$('#tMsg').innerHTML=`<div class="notice">❌ ${esc(e.message)}</div>`}
 });
 async function loadWallet(){
-  const ph=$('#wPhone').value.trim();
-  if(!ph){$('#wBalance').innerHTML='<span class="muted">ဖုန်းနံပါတ် ထည့်ပေးပါ — Profile မှာ သိမ်းထားရင် အလိုလို ပြမယ်</span>';$('#wLedger').innerHTML='';return}
+  const ph=authUser?authUser.phone:'';
+  $('#wPhone').value=ph;
+  if(!ph){$('#wBalance').innerHTML='<span class="muted">Login ဝင်မှ လက်ကျန် ပြမယ်</span>';$('#wLedger').innerHTML='';return}
   try{
-    const w=await api('/api/wallet?phone='+encodeURIComponent(ph));
+    const w=await api('/api/wallet');
     $('#wBalance').innerHTML=`<b>Balance: ${fmt(w.balance)}</b>`;
     $('#wLedger').innerHTML=w.ledger.slice().reverse().map(l=>`<div class="muted">${l.date.slice(0,10)} · ${l.type} ${fmt(l.amount)} ${l.transferId?esc(l.transferId):''}</div>`).join('')||'<p class="muted">—</p>';
     loadMyTopups();
   }catch(e){$('#wBalance').innerHTML=`<div class="notice">❌ ${esc(e.message)}</div>`}
 }
-let wTimer=null;
-$('#wPhone').addEventListener('input',()=>{clearTimeout(wTimer);wTimer=setTimeout(loadWallet,600)});
 async function loadMyTopups(){
-  const ph=$('#tPhone').value||$('#wPhone').value; if(!ph)return;
-  const list=await api('/api/topups?phone='+encodeURIComponent(ph));
-  $('#myTopups').innerHTML=list.map(x=>`<div>${x.id} · ${fmt(x.amount)} · ${x.method} · ${esc(x.transferId)} — <span class="badge ${x.status}">${x.status}</span></div>`).join('')||'—';
+  try{
+    const list=await api('/api/topups');
+    $('#myTopups').innerHTML=list.map(x=>`<div>${x.id} · ${fmt(x.amount)} · ${x.method} · ${esc(x.transferId)} — <span class="badge ${x.status}">${x.status}</span></div>`).join('')||'—';
+  }catch(e){}
 }
-$('#oCheck').addEventListener('click',async()=>{
-  const ph=$('#oPhone').value; if(!ph)return;
-  const list=await api('/api/orders?phone='+encodeURIComponent(ph));
-  $('#myOrders').innerHTML=list.map(o=>`<div class="card" style="margin:8px 0"><b>${o.id}</b> · ${fmt(o.total)} · <span class="badge ${o.status}">${o.status}</span><br><span class="muted">${o.items.map(i=>esc(i.name)+' ×'+i.qty).join(', ')} · ${esc(o.township)}</span></div>`).join('')||'<p class="muted">—</p>';
-});
+async function loadMyOrders(){
+  try{
+    const list=await api('/api/orders');
+    $('#myOrders').innerHTML=list.map(o=>`<div class="card" style="margin:8px 0"><b>${o.id}</b> · ${fmt(o.total)} · <span class="badge ${o.status}">${o.status}</span><br><span class="muted">${o.items.map(i=>esc(i.name)+' ×'+i.qty).join(', ')} · ${esc(o.township)}</span></div>`).join('')||'<p class="muted">—</p>';
+  }catch(e){}
+}
 
 // ---- Profile ----
 let profile=JSON.parse(localStorage.getItem('profile')||'{}');
 function renderProfile(){
   const p=profile;
-  $('#pName').value=p.name||''; $('#pPhone').value=p.phone||''; $('#pAddress').value=p.address||'';
+  $('#pName').value=authUser?authUser.name:(p.name||'');
+  $('#pPhone').value=authUser?authUser.phone:(p.phone||'');
+  $('#pAddress').value=p.address||'';
   const prev=$('#pPhotoPrev');
   if(p.photo){prev.src=p.photo;prev.classList.remove('hidden')}else{prev.classList.add('hidden')}
   const v=$('#profileSummary');
-  if(p.name||p.phone){v.innerHTML=`<p>👤 <b>${esc(p.name||'')}</b> · ${esc(p.phone||'')}</p>${p.address?`<p class="muted">${esc(p.address)}</p>`:''}`}else{v.innerHTML='<p class="muted">—</p>'}
+  const nm=authUser?authUser.name:p.name, ph=authUser?authUser.phone:p.phone;
+  if(nm||ph){v.innerHTML=`<p>👤 <b>${esc(nm||'')}</b> · ${esc(ph||'')}</p>${p.address?`<p class="muted">${esc(p.address)}</p>`:''}`}else{v.innerHTML='<p class="muted">—</p>'}
 }
 function prefillProfile(){
-  if(profile.name)$('#coName').value=profile.name;
-  if(profile.phone){$('#coPhone').value=profile.phone;$('#wPhone').value=profile.phone;$('#tPhone').value=profile.phone;$('#oPhone').value=profile.phone}
+  if(!authUser)return;
+  $('#coName').value=profile.name||authUser.name;
+  $('#coPhone').value=authUser.phone;
+  $('#wPhone').value=authUser.phone;
+  $('#tName').value=authUser.name;
+  $('#tPhone').value=authUser.phone;
   if(profile.address)$('#coAddress').value=profile.address;
 }
 function renderFavs(){
@@ -273,7 +409,7 @@ function renderFavs(){
   $('#myFavs').innerHTML=list.map(p=>`<div class="row"><span style="flex:1">${esc(lang==='en'?p.nameEn:p.name)} — <span class="price">${fmt(p.price)}</span></span><button onclick="addCart('${p.id}')">+ Cart</button></div>`).join('')||'<p class="muted">—</p>';
 }
 $('#pSave').addEventListener('click',()=>{
-  profile={name:$('#pName').value.trim(),phone:$('#pPhone').value.trim(),address:$('#pAddress').value.trim(),photo:profile.photo||''};
+  profile={name:authUser?authUser.name:'',phone:authUser?authUser.phone:'',address:$('#pAddress').value.trim(),photo:profile.photo||''};
   localStorage.setItem('profile',JSON.stringify(profile));
   renderProfile(); prefillProfile();
   $('#pMsg').textContent='✅ သိမ်းပြီးပြီ';
@@ -296,11 +432,22 @@ $('#pPhoto').addEventListener('change',e=>{
 });
 
 // ---- Language / theme ----
-$('#langBtn').addEventListener('click',()=>{lang=lang==='my'?'en':'my';$('#langBtn').textContent=lang==='my'?'English':'မြန်မာ';document.querySelectorAll('[data-t]').forEach(el=>el.textContent=t(el.dataset.t));selectedCat='';loadShop()});
+function setLang(l){lang=l;$('#langBtn').textContent=lang==='my'?'English':'မြန်မာ';document.querySelectorAll('[data-t]').forEach(el=>el.textContent=t(el.dataset.t));selectedCat='';if(authUser)loadShop()}
+$('#langBtn').addEventListener('click',()=>setLang(lang==='my'?'en':'my'));
 $('#themeBtn').addEventListener('click',()=>document.body.classList.toggle('dark'));
 
-// ---- init ----
-loadShop(); renderProfile(); showView('shop');
+// ---- init: login gate first ----
+async function initAuth(){
+  if(authToken&&isTokenUsable()){
+    try{
+      authUser=await api('/api/auth/me');
+      syncAccountProfile();showShop();renderProfile();await loadShop();startRefresh();
+      return;
+    }catch(e){/* fall through to login screen */}
+  }
+  logout();
+}
+initAuth();
 </script>
 </body>
 </html>

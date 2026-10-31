@@ -104,7 +104,8 @@ async function loadAdmin(){
       c.innerHTML=`<div class="card"><table><tr><th>ID</th><th>Sender</th><th>Amount</th><th>Txn</th><th>Status</th><th></th></tr>${list.map(x=>`<tr><td>${x.id}</td><td>${esc(x.senderName)}<br><span class="muted">${esc(x.senderPhone)}</span></td><td>${fmt(x.amount)}<br><span class="muted">${x.method}</span></td><td>${esc(x.transferId)}</td><td><span class="badge ${x.status}">${x.status}</span></td><td>${x.status==='pending'?`<button class="primary" onclick="topupAct('${x.id}','approve')">Approve</button> <button class="warn" onclick="topupAct('${x.id}','reject')">Reject</button>`:''}</td></tr>`).join('')}</table></div>`;
     }else if(adminTab==='settings'){
       const s=await aapi('/api/admin/settings');
-      c.innerHTML=`<div class="card"><h3>Recipient (KPay / WavePay)</h3><input id="sName" value="${esc(s.recipientName)}"><input id="sPhone" value="${esc(s.recipientPhone)}"><input id="sFree" type="number" value="${s.freeThreshold}"><button class="primary" onclick="saveSettings()">Save</button><div id="sMsg"></div></div>`;
+      c.innerHTML=`<div class="card"><h3>Recipient (KPay / WavePay)</h3><input id="sName" value="${esc(s.recipientName)}"><input id="sPhone" value="${esc(s.recipientPhone)}"><input id="sFree" type="number" value="${s.freeThreshold}"><button class="primary" onclick="saveSettings()">Save</button><div id="sMsg"></div></div>`+
+      `<div class="card"><h3>⚠️ User data ဖျက်မယ်</h3><p class="muted">အော်ဒါ၊ ငွေဖြည့်၊ wallet၊ အကောင့်များ အားလုံး ဖျက်မယ်။ ပစ္စည်း၊ ပို့ခ၊ setting တွေ မပျက်ဘူး။</p><button class="warn" onclick="resetUserData()">ဖျက်မည်</button><div id="resetMsg"></div></div>`;
     }
   }catch(e){c.innerHTML=`<div class="notice">❌ ${esc(e.message)}</div>`}
 }
@@ -115,6 +116,7 @@ window.setOrderStatus=async(id,s)=>{await aapi('/api/admin/orders/'+id,{method:'
 window.editFee=async(name,v)=>{await aapi('/api/admin/delivery/'+encodeURIComponent(name),{method:'PATCH',body:JSON.stringify({fee:Number(v)})})};
 window.topupAct=async(id,act)=>{await aapi(`/api/admin/topups/${id}/${act}`,{method:'POST'});loadAdmin()};
 window.saveSettings=async()=>{await aapi('/api/admin/settings',{method:'PATCH',body:JSON.stringify({recipientName:$('#sName').value,recipientPhone:$('#sPhone').value,freeThreshold:Number($('#sFree').value)})});$('#sMsg').textContent='Saved ✅'};
+window.resetUserData=async()=>{if(!confirm('User data အားလုံး (အော်ဒါ၊ ငွေဖြည့်၊ wallet၊ အကောင့်) ဖျက်မှာလား?'))return;await aapi('/api/admin/reset-user-data',{method:'POST'});$('#resetMsg').textContent='ဖျက်ပြီးပြီ ✅'};
 </script>
 </body>
 </html>
