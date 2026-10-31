@@ -166,7 +166,7 @@ app.get('/api/delivery-zones', requireAuth, ah(async (req, res) => {
 }));
 app.get('/api/settings', requireAuth, ah(async (req, res) => {
   const s = await store.getSettings();
-  res.json({ recipientName: s.recipientName, recipientPhone: s.recipientPhone, freeThreshold: s.freeThreshold });
+  res.json({ recipientName: s.recipientName, recipientPhone: s.recipientPhone, freeThreshold: s.freeThreshold, announcement: s.announcement || '' });
 }));
 
 // Place an order (cash on delivery, or wallet if paymentMethod === 'wallet')
@@ -363,7 +363,7 @@ app.patch('/api/admin/delivery/:name', requireAdmin, ah(async (req, res) => {
 app.get('/api/admin/settings', requireAdmin, ah(async (req, res) => res.json(await store.getSettings())));
 app.patch('/api/admin/settings', requireAdmin, ah(async (req, res) => {
   const fields = {};
-  for (const k of ['recipientName', 'recipientPhone', 'freeThreshold', 'otherTownshipFee']) {
+  for (const k of ['recipientName', 'recipientPhone', 'freeThreshold', 'otherTownshipFee', 'announcement']) {
     if (req.body[k] !== undefined) fields[k] = req.body[k];
   }
   res.json(await store.updateSettings(fields));
