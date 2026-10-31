@@ -351,7 +351,12 @@ function showAnnouncement(){
   announceText=txt; announceCount=0;
   track.textContent=txt;
   track.style.animationDuration=Math.min(30,Math.max(8,Math.round(txt.length*0.25)))+'s';
-  track.style.animation='none';void track.offsetWidth;track.style.animation='';
+  // Restart the animation so the new text scrolls from the right edge.
+  // (Use the animation-name longhand: the animation shorthand would wipe
+  // the duration set above, freezing the text off-screen with 0s duration.)
+  track.style.animationName='none';
+  void track.offsetWidth;
+  track.style.animationName='announceScroll';
   bar.classList.remove('hidden');
 }
 window.hideAnnouncement=()=>{$('#announceBar').classList.add('hidden')};
