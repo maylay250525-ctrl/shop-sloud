@@ -86,6 +86,19 @@ th,td{border-bottom:1px solid var(--line);padding:7px 5px;text-align:left;vertic
     </div>
 
     <div class="card">
+      <h2 data-t="profile">Profile — ပရိုဖိုင်</h2>
+      <div id="profileView"></div>
+      <input id="pName" placeholder="နာမည် / Name">
+      <input id="pPhone" placeholder="ဖုန်း / Phone">
+      <input id="pAddress" placeholder="လိပ်စာ / Address">
+      <div class="row"><img id="pPhotoPrev" class="hidden" style="width:72px;height:72px;object-fit:cover;border-radius:50%"><input id="pPhoto" type="file" accept="image/*" style="flex:1"></div>
+      <button class="primary" id="pSave" data-t="saveProfile">သိမ်းမည်</button>
+      <span id="pMsg" class="muted"></span>
+      <h3 data-t="myFavs">ကျွန်ုပ်၏ အကြိုက်များ</h3>
+      <div id="myFavs" class="muted">—</div>
+    </div>
+
+    <div class="card">
       <h2 data-t="orders">ကျွန်ုပ်၏ အော်ဒါများ</h2>
       <div class="row"><input id="oPhone" placeholder="ဖုန်း / Phone" style="flex:1"><button id="oCheck">ကြည့်မည်</button></div>
       <div id="myOrders"></div>
@@ -96,8 +109,8 @@ th,td{border-bottom:1px solid var(--line);padding:7px 5px;text-align:left;vertic
 const $=s=>document.querySelector(s);
 let lang='my', products=[], zones=[], settings={}, cart={}, favs=JSON.parse(localStorage.getItem('favs')||'[]');
 const T={
- my:{shop:'ဈေးဆိုင်',cart:'ခြင်းတောင်း (Cart)',checkout:'မှာယူမည် (Checkout)',order:'မှာယူမည်',wallet:'Wallet — ငွေဖြည့်မည်',topup:'ငွေဖြည့်မည် (Top-up)',sendTopup:'ပို့မည်',myTopups:'ကျွန်ုပ်၏ တောင်းဆိုမှုများ',orders:'ကျွန်ုပ်၏ အော်ဒါများ'},
- en:{shop:'Shop',cart:'Cart',checkout:'Checkout',order:'Place Order',wallet:'Wallet — Top-up',topup:'Top-up',sendTopup:'Submit',myTopups:'My top-up requests',orders:'My orders'}};
+ my:{shop:'ဈေးဆိုင်',cart:'ခြင်းတောင်း (Cart)',checkout:'မှာယူမည် (Checkout)',order:'မှာယူမည်',wallet:'Wallet — ငွေဖြည့်မည်',topup:'ငွေဖြည့်မည် (Top-up)',sendTopup:'ပို့မည်',myTopups:'ကျွန်ုပ်၏ တောင်းဆိုမှုများ',orders:'ကျွန်ုပ်၏ အော်ဒါများ',profile:'Profile — ပရိုဖိုင်',saveProfile:'သိမ်းမည်',myFavs:'ကျွန်ုပ်၏ အကြိုက်များ',copyPhone:'📋 ကူးမည်'},
+ en:{shop:'Shop',cart:'Cart',checkout:'Checkout',order:'Place Order',wallet:'Wallet — Top-up',topup:'Top-up',sendTopup:'Submit',myTopups:'My top-up requests',orders:'My orders',profile:'Profile',saveProfile:'Save',myFavs:'My favourites',copyPhone:'📋 Copy'}};
 function t(k){return (T[lang]||T.my)[k]||k}
 function fmt(n){return Number(n).toLocaleString()+' Ks'}
 function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
@@ -111,7 +124,7 @@ async function loadShop(){
   const cats=[...new Set(products.map(p=>lang==='en'?p.categoryEn:p.category))];
   $('#catFilter').innerHTML='<option value="">— Category —</option>'+cats.map(c=>`<option>${esc(c)}</option>`).join('');
   $('#coTownship').innerHTML=zones.map(z=>`<option value="${esc(z.name)}">${esc(z.name)} — ${fmt(z.fee)}</option>`).join('')+`<option value="Other">Other — ${fmt(settings.freeThreshold?4000:4000)}</option>`;
-  renderProducts(); renderCart();
+  renderProducts(); renderCart(); renderFavs(); showRecipient(); prefillProfile();
 }
 function renderProducts(){
   const q=($('#search').value||'').toLowerCase(), cf=$('#catFilter').value;
@@ -123,7 +136,7 @@ function renderProducts(){
   $('#products').innerHTML=list.map(p=>`<div class="prod"><h3>${esc(lang==='en'?p.nameEn:p.name)}</h3><div class="muted">${esc(lang==='en'?p.categoryEn:p.category)} · stock ${p.stock}</div><div class="price">${fmt(p.price)}</div><div class="row"><button onclick="addCart('${p.id}')">+ Cart</button><button onclick="toggleFav('${p.id}')">${favs.includes(p.id)?'★':'☆'}</button></div></div>`).join('')||'<p class="muted">—</p>';
 }
 window.addCart=id=>{cart[id]=(cart[id]||0)+1;renderCart()};
-window.toggleFav=id=>{favs=favs.includes(id)?favs.filter(x=>x!==id):[...favs,id];localStorage.setItem('favs',JSON.stringify(favs));renderProducts()};
+window.toggleFav=id=>{favs=favs.includes(id)?favs.filter(x=>x!==id):[...favs,id];localStorage.setItem('favs',JSON.stringify(favs));renderProducts();renderFavs()};
 function cartSubtotal(){return Object.entries(cart).reduce((s,[id,q])=>{const p=products.find(x=>x.id===id);return s+(p?p.price*q:0)},0)}
 function renderCart(){
   const entries=Object.entries(cart);
@@ -156,8 +169,9 @@ $('#tMethod').addEventListener('change',showRecipient);
 function showRecipient(){
   const m=$('#tMethod').value;
   $('#recipientBox').classList.remove('hidden');
-  $('#recipientBox').innerHTML=`${m==='kpay'?'KBZPay':'WavePay'} → <b>${esc(settings.recipientName||'')}</b> · ${esc(settings.recipientPhone||'')}<br><span class="muted">ငွေလွှဲပြီးမှ အောက်မှာ နာမည် / ဖုန်း / ငွေလွှဲ ID ထည့်ပြီး ပို့ပါ။ Admin အတည်ပြုမှ wallet ထဲ ငွေရောက်မယ်။</span>`;
+  $('#recipientBox').innerHTML=`<b>${m==='kpay'?'KBZPay':'WavePay'}</b> → ငွေလွှဲရန်: <b>${esc(settings.recipientName||'')}</b> · <b>${esc(settings.recipientPhone||'')}</b> <button onclick="copyRecipientPhone()" data-t="copyPhone">📋 ကူးမည်</button><br><span class="muted">ငွေလွှဲပြီးမှ အောက်မှာ နာမည် / ဖုန်း / ငွေလွှဲ ID ထည့်ပြီး ပို့ပါ။ Admin အတည်ပြုမှ wallet ထဲ ငွေရောက်မယ်။</span> <span id="copyMsg" class="muted"></span>`;
 }
+window.copyRecipientPhone=async()=>{try{await navigator.clipboard.writeText(settings.recipientPhone||'');const c=$('#copyMsg');if(c)c.textContent='✅ ကူးပြီးပြီ';}catch(e){}};
 $('#tSubmit').addEventListener('click',async()=>{
   try{
     const r=await api('/api/topups',{method:'POST',body:JSON.stringify({senderName:$('#tName').value,senderPhone:$('#tPhone').value,method:$('#tMethod').value,amount:Number($('#tAmount').value),transferId:$('#tTxn').value})});
@@ -187,8 +201,50 @@ $('#oCheck').addEventListener('click',async()=>{
 $('#langBtn').addEventListener('click',()=>{lang=lang==='my'?'en':'my';$('#langBtn').textContent=lang==='my'?'English':'မြန်မာ';document.querySelectorAll('[data-t]').forEach(el=>el.textContent=t(el.dataset.t));loadShop()});
 $('#themeBtn').addEventListener('click',()=>document.body.classList.toggle('dark'));
 
+// ---- Profile ----
+let profile=JSON.parse(localStorage.getItem('profile')||'{}');
+function renderProfile(){
+  const p=profile;
+  $('#pName').value=p.name||''; $('#pPhone').value=p.phone||''; $('#pAddress').value=p.address||'';
+  const prev=$('#pPhotoPrev');
+  if(p.photo){prev.src=p.photo;prev.classList.remove('hidden')}else{prev.classList.add('hidden')}
+  const v=$('#profileView');
+  if(p.name||p.phone){v.innerHTML=`<p>👤 <b>${esc(p.name||'')}</b> · ${esc(p.phone||'')}</p>${p.address?`<p class="muted">${esc(p.address)}</p>`:''}`}else{v.innerHTML='<p class="muted">—</p>'}
+}
+function prefillProfile(){
+  if(profile.name)$('#coName').value=profile.name;
+  if(profile.phone){$('#coPhone').value=profile.phone;$('#wPhone').value=profile.phone;$('#tPhone').value=profile.phone;$('#oPhone').value=profile.phone}
+  if(profile.address)$('#coAddress').value=profile.address;
+}
+function renderFavs(){
+  const list=products.filter(p=>favs.includes(p.id));
+  $('#myFavs').innerHTML=list.map(p=>`<div class="row"><span style="flex:1">${esc(lang==='en'?p.nameEn:p.name)} — <span class="price">${fmt(p.price)}</span></span><button onclick="addCart('${p.id}')">+ Cart</button></div>`).join('')||'<p class="muted">—</p>';
+}
+$('#pSave').addEventListener('click',()=>{
+  profile={name:$('#pName').value.trim(),phone:$('#pPhone').value.trim(),address:$('#pAddress').value.trim(),photo:profile.photo||''};
+  localStorage.setItem('profile',JSON.stringify(profile));
+  renderProfile(); prefillProfile();
+  $('#pMsg').textContent='✅ သိမ်းပြီးပြီ';
+});
+$('#pPhoto').addEventListener('change',e=>{
+  const f=e.target.files[0]; if(!f)return;
+  const r=new FileReader();
+  r.onload=()=>{
+    const img=new Image();
+    img.onload=()=>{
+      const c=document.createElement('canvas');const s=160/Math.max(img.width,img.height);
+      c.width=Math.max(1,Math.round(img.width*s));c.height=Math.max(1,Math.round(img.height*s));
+      c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+      profile.photo=c.toDataURL('image/jpeg',0.8);
+      localStorage.setItem('profile',JSON.stringify(profile)); renderProfile();
+    };
+    img.src=r.result;
+  };
+  r.readAsDataURL(f);
+});
+
 // ---- init ----
-loadShop(); showRecipient();
+loadShop(); renderProfile();
 </script>
 </body>
 </html>
