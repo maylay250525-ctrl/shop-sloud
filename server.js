@@ -308,6 +308,14 @@ app.post('/api/admin/topups/:id/reject', requireAdmin, ah(async (req, res) => {
   res.json({ ...t, status: 'rejected' });
 }));
 
+// Admin reads (same data as the shop endpoints, but gated by the admin
+// passcode instead of a customer token — the Admin page must use these).
+app.get('/api/admin/products', requireAdmin, ah(async (req, res) => res.json(await store.getProducts())));
+app.get('/api/admin/delivery-zones', requireAdmin, ah(async (req, res) => {
+  const [zones, settings] = [await store.getZones(), await store.getSettings()];
+  res.json({ zones, otherTownshipFee: settings.otherTownshipFee, freeThreshold: settings.freeThreshold });
+}));
+
 app.post('/api/admin/products', requireAdmin, ah(async (req, res) => {
   const { name, nameEn, price, stock, category, categoryEn } = req.body || {};
   if (!name || !Number.isFinite(Number(price))) return res.status(400).json({ error: 'missing fields' });
