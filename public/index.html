@@ -394,6 +394,16 @@ async function loadMyTopups(){
   try{
     const list=await api('/api/topups');
     $('#myTopups').innerHTML=list.map(x=>`<div>${x.id} · ${fmt(x.amount)} · ${x.method} · ${esc(x.transferId)} — <span class="badge ${x.status}">${x.status}</span></div>`).join('')||'—';
+    // The submit message ("waiting for approval") is set once when a top-up
+    // is sent and never updates by itself — refresh it from the real status
+    // so an approved top-up stops looking pending (the 15s auto-refresh
+    // calls loadWallet -> loadMyTopups while the Wallet tab is open).
+    const m=$('#tMsg');
+    if(m&&list.length&&m.innerHTML.includes('စောင့်နေတယ်')){
+      const latest=list.slice().sort((a,b)=>new Date(b.date||0)-new Date(a.date||0))[0];
+      if(latest.status==='approved')m.innerHTML=`<div class="notice">✅ ${latest.id} — ${fmt(latest.amount)} · Admin အတည်ပြုပြီးပြီ, wallet ထဲ ငွေရောက်ပြီ</div>`;
+      else if(latest.status==='rejected')m.innerHTML=`<div class="notice">❌ ${latest.id} — Admin က ပယ်လိုက်တယ်</div>`;
+    }
   }catch(e){}
 }
 async function loadMyOrders(){
