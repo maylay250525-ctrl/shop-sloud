@@ -92,7 +92,15 @@ async function loadAdmin(){
       `<div class="card"><table><tr><th>Name</th><th>Price</th><th>Stock</th><th></th></tr>${products.map(p=>`<tr><td>${esc(p.name)}</td><td><input type="number" value="${p.price}" onchange="editProduct('${p.id}','price',this.value)"></td><td><input type="number" value="${p.stock}" onchange="editProduct('${p.id}','stock',this.value)"></td><td><button onclick="delProduct('${p.id}')">✕</button></td></tr>`).join('')}</table></div>`;
     }else if(adminTab==='orders'){
       const list=await aapi('/api/admin/orders');
-      c.innerHTML=`<div class="card"><table><tr><th>ID</th><th>Customer</th><th>Total</th><th>Status</th></tr>${list.map(o=>`<tr><td>${o.id}</td><td>${esc(o.customerName)}<br><span class="muted">${esc(o.phone)} · ${esc(o.township)}</span></td><td>${fmt(o.total)}</td><td><select onchange="setOrderStatus('${o.id}',this.value)">${['pending','confirmed','delivering','delivered','cancelled'].map(s=>`<option ${o.status===s?'selected':''}>${s}</option>`).join('')}</select></td></tr>`).join('')}</table></div>`;
+      c.innerHTML=`<div class="card">${list.map(o=>`
+      <div style="border-bottom:1px solid #eee;padding:12px 0">
+        <div class="row"><b>${o.id}</b><span class="muted">${(o.date||'').slice(0,10)} ${(o.date||'').slice(11,16)}</span>
+        <select style="width:150px" onchange="setOrderStatus('${o.id}',this.value)">${['pending','confirmed','delivering','delivered','cancelled'].map(s=>`<option ${o.status===s?'selected':''}>${s}</option>`).join('')}</select></div>
+        <div>${esc(o.customerName)} · ${esc(o.phone)}</div>
+        <div class="muted">${esc(o.township)} — ${esc(o.address||'')}</div>
+        <div>${(o.items||[]).map(it=>`${esc(it.name)} × ${it.qty} — ${fmt(it.price*it.qty)}`).join('<br>')||'—'}</div>
+        <div class="muted">ပစ္စည်း ${fmt(o.subtotal)} + ပို့ခ ${fmt(o.deliveryFee)} = <b>${fmt(o.total)}</b> · ${o.paymentMethod==='wallet'?'💰 Wallet':'💵 Cash'}</div>
+      </div>`).join('')||'—'}</div>`;
     }else if(adminTab==='delivery'){
       const dz=await aapi('/api/admin/delivery-zones');
       c.innerHTML=`<div class="card"><p class="muted">Free delivery at/over ${fmt(dz.freeThreshold)} · Other townships ${fmt(dz.otherTownshipFee)}</p><table><tr><th>Township</th><th>Fee</th></tr>${dz.zones.map(z=>`<tr><td>${esc(z.name)}</td><td><input type="number" value="${z.fee}" onchange="editFee('${z.name}',this.value)"></td></tr>`).join('')}</table></div>`;
