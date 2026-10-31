@@ -115,7 +115,7 @@ async function loadAdmin(){
       c.innerHTML=`<div class="card"><table><tr><th>Name</th><th>Phone</th><th>Joined</th><th>Reset password</th><th></th></tr>${list.map(u=>`<tr><td>${esc(u.name)}</td><td>${esc(u.phone)}</td><td class="muted">${(u.createdAt||'').slice(0,10)}</td><td><input type="text" id="rp-${esc(u.phone)}" placeholder="Password အသစ်" style="width:130px;display:inline-block"> <button onclick="resetUserPass('${esc(u.phone)}')">Reset</button></td><td><button onclick="delUser('${esc(u.phone)}')">✕</button></td></tr>`).join('')||'<tr><td colspan="5">—</td></tr>'}</table><p class="muted">Password မေ့သွားတဲ့ ဝယ်သူကို ဒီကနေ password အသစ် ပေးလို့ရတယ် — ပေးပြီးရင် ဝယ်သူက Profile မှာ သူ့ဘာသာ ပြန်ချိန်းနိုင်တယ်။</p></div>`;
     }else if(adminTab==='settings'){
       const s=await aapi('/api/admin/settings');
-      c.innerHTML=`<div class="card"><h3>Recipient (KPay / WavePay)</h3><input id="sName" value="${esc(s.recipientName)}"><input id="sPhone" value="${esc(s.recipientPhone)}"><input id="sFree" type="number" value="${s.freeThreshold}"><button class="primary" onclick="saveSettings()">Save</button><div id="sMsg"></div></div>`+
+      c.innerHTML=`<div class="card"><h3>Recipient (KPay / WavePay)</h3><label class="muted">Admin နာမည်</label><input id="sName" value="${esc(s.recipientName)}"><label class="muted">Admin ဖုန်း</label><input id="sPhone" value="${esc(s.recipientPhone)}"><label class="muted">ပို့ခ အခမဲ့ ဖြစ်မည့် ပမာဏ (Ks) — အော်ဒါ ဒီပမာဏ ပြည့်ရင် ပို့ခ 0 Ks</label><input id="sFree" type="number" value="${s.freeThreshold}"><label class="muted">အခြားမြို့နယ် ပို့ခ (Ks)</label><input id="sOther" type="number" value="${s.otherTownshipFee}"><button class="primary" onclick="saveSettings()">Save</button><div id="sMsg"></div></div>`+
       `<div class="card"><h3>⚠️ User data ဖျက်မယ်</h3><p class="muted">အော်ဒါ၊ ငွေဖြည့်၊ wallet၊ အကောင့်များ အားလုံး ဖျက်မယ်။ ပစ္စည်း၊ ပို့ခ၊ setting တွေ မပျက်ဘူး။</p><button class="warn" onclick="resetUserData()">ဖျက်မည်</button><div id="resetMsg"></div></div>`;
     }
   }catch(e){c.innerHTML=`<div class="notice">❌ ${esc(e.message)}</div>`}
@@ -126,7 +126,7 @@ window.delProduct=async id=>{if(confirm('Delete?')){await aapi('/api/admin/produ
 window.setOrderStatus=async(id,s)=>{await aapi('/api/admin/orders/'+id,{method:'PATCH',body:JSON.stringify({status:s})});loadAdmin()};
 window.editFee=async(name,v)=>{await aapi('/api/admin/delivery/'+encodeURIComponent(name),{method:'PATCH',body:JSON.stringify({fee:Number(v)})})};
 window.topupAct=async(id,act)=>{await aapi(`/api/admin/topups/${id}/${act}`,{method:'POST'});loadAdmin()};
-window.saveSettings=async()=>{await aapi('/api/admin/settings',{method:'PATCH',body:JSON.stringify({recipientName:$('#sName').value,recipientPhone:$('#sPhone').value,freeThreshold:Number($('#sFree').value)})});$('#sMsg').textContent='Saved ✅'};
+window.saveSettings=async()=>{await aapi('/api/admin/settings',{method:'PATCH',body:JSON.stringify({recipientName:$('#sName').value,recipientPhone:$('#sPhone').value,freeThreshold:Number($('#sFree').value),otherTownshipFee:Number($('#sOther').value)})});$('#sMsg').textContent='Saved ✅'};
 window.resetUserPass=async phone=>{
   const el=document.getElementById('rp-'+phone);
   const v=el?el.value.trim():'';
