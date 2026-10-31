@@ -184,7 +184,7 @@ const PG_SCHEMA = `
 CREATE TABLE IF NOT EXISTS products (
   id TEXT PRIMARY KEY, name TEXT NOT NULL, name_en TEXT NOT NULL,
   price INTEGER NOT NULL, stock INTEGER NOT NULL,
-  category TEXT NOT NULL, category_en TEXT NOT NULL
+  category TEXT NOT NULL, category_en TEXT NOT NULL, image TEXT
 );
 CREATE TABLE IF NOT EXISTS delivery_zones (
   name TEXT PRIMARY KEY, fee INTEGER NOT NULL
@@ -220,7 +220,7 @@ CREATE TABLE IF NOT EXISTS counters (
 `;
 
 function productFromRow(r) {
-  return { id: r.id, name: r.name, nameEn: r.name_en, price: r.price, stock: r.stock, category: r.category, categoryEn: r.category_en };
+  return { id: r.id, name: r.name, nameEn: r.name_en, price: r.price, stock: r.stock, category: r.category, categoryEn: r.category_en, image: r.image || '' };
 }
 function orderFromRow(r) {
   return {
@@ -250,13 +250,15 @@ class PgStore {
 
   async init() {
     await this.pool.query(PG_SCHEMA);
+    // Migration: product photos (added 2026-11-01).
+    await this.pool.query('ALTER TABLE products ADD COLUMN IF NOT EXISTS image TEXT');
     // Seed once, when tables are empty.
     const { rows } = await this.pool.query('SELECT COUNT(*)::int AS n FROM products');
     if (rows[0].n === 0) {
       for (const p of SEED_PRODUCTS) {
         await this.pool.query(
-          'INSERT INTO products (id, name, name_en, price, stock, category, category_en) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-          [p.id, p.name, p.nameEn, p.price, p.stock, p.category, p.categoryEn]);
+          'INSERT INTO products (id, name, name_en, price, stock, category, category_en, image) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
+          [p.id, p.name, p.nameEn, p.price, p.stock, p.category, p.categoryEn, '']);
       }
       for (const z of SEED_ZONES) {
         await this.pool.query('INSERT INTO delivery_zones (name, fee) VALUES ($1,$2)', [z.name, z.fee]);
@@ -281,8 +283,8 @@ class PgStore {
   }
   async createProduct(p) {
     await this.pool.query(
-      'INSERT INTO products (id, name, name_en, price, stock, category, category_en) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-      [p.id, p.name, p.nameEn, p.price, p.stock, p.category, p.categoryEn]);
+      'INSERT INTO products (id, name, name_en, price, stock, category, category_en, image) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
+      [p.id, p.name, p.nameEn, p.price, p.stock, p.category, p.categoryEn, p.image || '']);
     return p;
   }
   async updateProduct(id, fields) {
@@ -290,8 +292,8 @@ class PgStore {
     if (!p) return null;
     const next = { ...p, ...fields };
     await this.pool.query(
-      'UPDATE products SET name=$2, name_en=$3, price=$4, stock=$5, category=$6, category_en=$7 WHERE id=$1',
-      [id, next.name, next.nameEn, next.price, next.stock, next.category, next.categoryEn]);
+      'UPDATE products SET name=$2, name_en=$3, price=$4, stock=$5, category=$6, category_en=$7, image=$8 WHERE id=$1',
+      [id, next.name, next.nameEn, next.price, next.stock, next.category, next.categoryEn, next.image || '']);
     return next;
   }
   async deleteProduct(id) {

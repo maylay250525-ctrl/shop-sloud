@@ -13,7 +13,7 @@ const path = require('path');
 const { createStore } = require('./store');
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '2mb' })); // product photos arrive as resized data URLs
 app.use(express.static(path.join(__dirname, 'public')));
 
 const PORT = process.env.PORT || 3000;
@@ -316,13 +316,21 @@ app.get('/api/admin/delivery-zones', requireAdmin, ah(async (req, res) => {
   res.json({ zones, otherTownshipFee: settings.otherTownshipFee, freeThreshold: settings.freeThreshold });
 }));
 
+// Product photo: a resized JPEG data URL from the Admin page (max ~1.5MB
+// of text, ~1MB of image). Photos live in the database, not on disk, so
+// they survive Render restarts.
+function validImage(v) {
+  return typeof v === 'string' && v.startsWith('data:image/') && v.length <= 1500000 ? v : '';
+}
+
 app.post('/api/admin/products', requireAdmin, ah(async (req, res) => {
-  const { name, nameEn, price, stock, category, categoryEn } = req.body || {};
+  const { name, nameEn, price, stock, category, categoryEn, image } = req.body || {};
   if (!name || !Number.isFinite(Number(price))) return res.status(400).json({ error: 'missing fields' });
   const p = {
     id: 'p' + Date.now().toString(36),
     name, nameEn: nameEn || name, price: Number(price),
     stock: Number(stock) || 0, category: category || 'စားသောက်ကုန်', categoryEn: categoryEn || 'Groceries',
+    image: validImage(image),
   };
   await store.createProduct(p);
   res.status(201).json(p);
@@ -333,6 +341,7 @@ app.patch('/api/admin/products/:id', requireAdmin, ah(async (req, res) => {
   for (const k of ['name', 'nameEn', 'price', 'stock', 'category', 'categoryEn']) {
     if (req.body[k] !== undefined) fields[k] = (k === 'price' || k === 'stock') ? Number(req.body[k]) : req.body[k];
   }
+  if (req.body.image !== undefined) fields.image = validImage(req.body.image);
   const p = await store.updateProduct(req.params.id, fields);
   if (!p) return res.status(404).json({ error: 'not found' });
   res.json(p);
