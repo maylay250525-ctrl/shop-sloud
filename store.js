@@ -156,6 +156,13 @@ class JsonStore {
     this._persist();
     return u;
   }
+  async deleteUser(phone) {
+    const i = this.db.users.findIndex(x => x.phone === phone);
+    if (i < 0) return false;
+    this.db.users.splice(i, 1);
+    this._persist();
+    return true;
+  }
   // Wipe all customer/user data for a fresh start. Shop setup is kept:
   // products, delivery zones and settings are NOT touched.
   async resetUserData() {
@@ -395,6 +402,10 @@ class PgStore {
     const { rows } = await this.pool.query(
       'UPDATE users SET password_hash=$2, salt=$3 WHERE phone=$1 RETURNING *', [phone, passwordHash, salt]);
     return rows.length ? userFromRow(rows[0]) : null;
+  }
+  async deleteUser(phone) {
+    const { rowCount } = await this.pool.query('DELETE FROM users WHERE phone = $1', [phone]);
+    return rowCount > 0;
   }
   // Wipe all customer/user data for a fresh start. Shop setup is kept:
   // products, delivery zones and settings are NOT touched.

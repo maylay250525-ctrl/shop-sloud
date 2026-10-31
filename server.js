@@ -370,6 +370,14 @@ app.post('/api/admin/users/:phone/reset-password', requireAdmin, ah(async (req, 
   res.json({ ok: true });
 }));
 
+// Delete one customer account (their wallet balance, orders and top-ups
+// stay in Admin history; only the login account is removed).
+app.delete('/api/admin/users/:phone', requireAdmin, ah(async (req, res) => {
+  const ok = await store.deleteUser(decodeURIComponent(req.params.phone));
+  if (!ok) return res.status(404).json({ error: 'not found' });
+  res.json({ ok: true });
+}));
+
 // Wipe all customer/user data (orders, top-ups, wallets, accounts) for a
 // fresh start. Products, delivery zones and settings are kept.
 app.post('/api/admin/reset-user-data', requireAdmin, ah(async (req, res) => {
