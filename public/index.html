@@ -78,6 +78,8 @@ body.dark #bottomNav button.active{background:#1d3a2c}
       <button class="primary" id="loginBtn" style="width:100%">ဝင်မည်</button>
       <div id="loginErr" class="auth-err"></div>
       <button class="auth-link" onclick="showAuth('register')">အကောင့်မရှိသေးဘူးလား? Register လုပ်မယ်</button>
+      <button class="auth-link" onclick="showForgot()">Password မေ့သွားလား?</button>
+      <div id="forgotBox" class="notice hidden" style="text-align:left"></div>
     </div>
     <div id="registerForm" class="hidden">
       <input id="rgName" placeholder="နာမည် / Name">
@@ -160,6 +162,11 @@ body.dark #bottomNav button.active{background:#1d3a2c}
       <span id="pMsg" class="muted"></span>
       <h3 data-t="myFavs">ကျွန်ုပ်၏ အကြိုက်များ</h3>
       <div id="myFavs" class="muted">—</div>
+      <h3>Password ချိန်းမည်</h3>
+      <input id="cpCurrent" type="password" placeholder="Password အဟောင်း">
+      <input id="cpNew" type="password" placeholder="Password အသစ် (အနည်းဆုံး ၄ လုံး)">
+      <button class="primary" id="cpBtn">Password ချိန်းမည်</button>
+      <span id="cpMsg" class="muted"></span>
     </div>
 
     <div class="card">
@@ -343,6 +350,20 @@ $('#registerBtn').addEventListener('click',async()=>{
 });
 $('#logoutBtn').addEventListener('click',()=>{logout()});
 
+// Forgot password: there is no SMS/email reset — the customer calls the
+// admin, the admin sets a temporary password, and the customer changes it
+// themselves in Profile after logging in.
+window.showForgot=async()=>{
+  const box=$('#forgotBox');
+  box.classList.remove('hidden');
+  try{
+    const info=await api('/api/shop-info');
+    box.innerHTML=`Password အသစ် လိုချင်ရင် Admin (<b>${esc(info.recipientName||'')}</b>) ကို ဖုန်း <b>${esc(info.recipientPhone||'')}</b> ကို ဆက်သွယ်ပြီး တောင်းပါ။ Admin က password အသစ် ပေးလိုက်မယ်။`;
+  }catch(e){
+    box.textContent='Password အသစ် လိုချင်ရင် Admin ကို ဆက်သွယ်ပြီး တောင်းပါ။';
+  }
+};
+
 // ---- Wallet / top-up ----
 $('#tMethod').addEventListener('change',showRecipient);
 function showRecipient(){
@@ -413,6 +434,16 @@ $('#pSave').addEventListener('click',()=>{
   localStorage.setItem('profile',JSON.stringify(profile));
   renderProfile(); prefillProfile();
   $('#pMsg').textContent='✅ သိမ်းပြီးပြီ';
+});
+$('#cpBtn').addEventListener('click',async()=>{
+  try{
+    await api('/api/auth/change-password',{method:'POST',body:JSON.stringify({currentPassword:$('#cpCurrent').value,newPassword:$('#cpNew').value})});
+    $('#cpMsg').textContent='✅ Password ချိန်းပြီးပြီ';
+    $('#cpCurrent').value='';$('#cpNew').value='';
+  }catch(e){
+    const m=String(e.message||'');
+    $('#cpMsg').textContent=m.includes('wrong current password')?'Password အဟောင်း မှားနေတယ်':(m.includes('min 4')?'Password အသစ် အနည်းဆုံး ၄ လုံး ရှိရမယ်':m);
+  }
 });
 $('#pPhoto').addEventListener('change',e=>{
   const f=e.target.files[0]; if(!f)return;
