@@ -88,8 +88,9 @@ async function loadAdmin(){
       c.innerHTML=`<div class="card"><p>Products: <b>${o.products}</b> · Orders: <b>${o.orders}</b> · Pending orders: <b>${o.pendingOrders}</b> · Pending top-ups: <b>${o.pendingTopups}</b> · Revenue: <b>${fmt(o.revenue)}</b></p><h3>Low stock</h3>${o.lowStock.map(p=>`<div>${esc(p.name)} — ${p.stock}</div>`).join('')||'—'}</div>`;
     }else if(adminTab==='products'){
       await loadProducts();
-      c.innerHTML=`<div class="card"><h3>Add product</h3><input id="npName" placeholder="Name (Myanmar)"><input id="npPrice" type="number" placeholder="Price (Ks)"><input id="npStock" type="number" placeholder="Stock"><button class="primary" onclick="addProduct()">Add</button></div>`+
-      `<div class="card"><table><tr><th>Name</th><th>Price</th><th>Stock</th><th></th></tr>${products.map(p=>`<tr><td>${esc(p.name)}</td><td><input type="number" value="${p.price}" onchange="editProduct('${p.id}','price',this.value)"></td><td><input type="number" value="${p.stock}" onchange="editProduct('${p.id}','stock',this.value)"></td><td><button onclick="delProduct('${p.id}')">✕</button></td></tr>`).join('')}</table></div>`;
+      c.innerHTML=`<div class="card"><h3>Add product</h3><input id="npName" placeholder="Name (Myanmar)"><input id="npPrice" type="number" placeholder="Price (Ks)"><input id="npStock" type="number" placeholder="Stock"><label class="muted">ပုံ (Photo)</label><input id="npImage" type="file" accept="image/*" onchange="newProductImagePicked(this)"><img id="npPreview" class="hidden" style="max-width:120px;border-radius:8px"><button class="primary" onclick="addProduct()">Add</button></div>`+
+      `<div class="card"><table><tr><th>ပုံ</th><th>Name</th><th>Price</th><th>Stock</th><th></th></tr>${products.map(p=>`<tr><td>${p.image?`<img src="${esc(p.image)}" style="width:48px;height:48px;object-fit:cover;border-radius:8px">`:`<span class="muted">—</span>`}<br><label style="font-size:12px;cursor:pointer">🖼️ ပြောင်းမည်<input type="file" accept="image/*" style="display:none" onchange="changeProductImage('${p.id}',this)"></label></td><td>${esc(p.name)}</td><td><input type="number" value="${p.price}" onchange="editProduct('${p.id}','price',this.value)"></td><td><input type="number" value="${p.stock}" onchange="editProduct('${p.id}','stock',this.value)"></td><td><button onclick="delProduct('${p.id}')">✕</button></td></tr>`).join('')}</table></div>`;
+      if(newProductImage){const pv=$('#npPreview');if(pv){pv.src=newProductImage;pv.classList.remove('hidden')}}
     }else if(adminTab==='orders'){
       const list=await aapi('/api/admin/orders');
       c.innerHTML=`<div class="card">${list.map(o=>`
@@ -120,7 +121,25 @@ async function loadAdmin(){
     }
   }catch(e){c.innerHTML=`<div class="notice">❌ ${esc(e.message)}</div>`}
 }
-window.addProduct=async()=>{await aapi('/api/admin/products',{method:'POST',body:JSON.stringify({name:$('#npName').value,price:Number($('#npPrice').value),stock:Number($('#npStock').value)})});await loadProducts();loadAdmin()};
+window.addProduct=async()=>{await aapi('/api/admin/products',{method:'POST',body:JSON.stringify({name:$('#npName').value,price:Number($('#npPrice').value),stock:Number($('#npStock').value),image:newProductImage})});newProductImage='';await loadProducts();loadAdmin()};
+// Resize a photo to max 320px JPEG before upload, so it stays small in the DB.
+let newProductImage='';
+function resizeImageFile(file){return new Promise((res,rej)=>{
+  const r=new FileReader();
+  r.onload=()=>{const img=new Image();img.onload=()=>{const s=320/Math.max(img.width,img.height);const c=document.createElement('canvas');c.width=Math.max(1,Math.round(img.width*s));c.height=Math.max(1,Math.round(img.height*s));c.getContext('2d').drawImage(img,0,0,c.width,c.height);res(c.toDataURL('image/jpeg',0.75))};img.onerror=rej;img.src=r.result};
+  r.onerror=rej;r.readAsDataURL(file);
+})}
+window.newProductImagePicked=async input=>{
+  const f=input.files[0];if(!f)return;
+  newProductImage=await resizeImageFile(f);
+  const pv=$('#npPreview');if(pv){pv.src=newProductImage;pv.classList.remove('hidden')}
+};
+window.changeProductImage=async(id,input)=>{
+  const f=input.files[0];if(!f)return;
+  const img=await resizeImageFile(f);
+  await aapi('/api/admin/products/'+id,{method:'PATCH',body:JSON.stringify({image:img})});
+  await loadProducts();loadAdmin();
+};
 window.editProduct=async(id,k,v)=>{await aapi('/api/admin/products/'+id,{method:'PATCH',body:JSON.stringify({[k]:Number(v)})});await loadProducts();loadAdmin()};
 window.delProduct=async id=>{if(confirm('Delete?')){await aapi('/api/admin/products/'+id,{method:'DELETE'});await loadProducts();loadAdmin()}};
 window.setOrderStatus=async(id,s)=>{await aapi('/api/admin/orders/'+id,{method:'PATCH',body:JSON.stringify({status:s})});loadAdmin()};
