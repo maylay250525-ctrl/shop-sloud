@@ -71,8 +71,16 @@ function renderAdminTabs(){$('#adminTabs').innerHTML=ADMIN_TABS.map(x=>`<button 
 window.setTab=x=>{adminTab=x;renderAdminTabs();loadAdmin()};
 const ah={'x-admin-passcode':''};
 async function aapi(p,o={}){ah['x-admin-passcode']=adminPass;return api(p,{...o,headers:ah})}
+// Don't wipe what the user is typing: skip the 10s auto-refresh while an
+// input/select inside the admin content has focus. It resumes on the next
+// cycle after they finish (saving happens on change/blur or the Save button).
+function isEditing(){
+  const a=document.activeElement;
+  return a&&$('#adminContent').contains(a)&&(a.tagName==='INPUT'||a.tagName==='SELECT'||a.tagName==='TEXTAREA');
+}
 async function loadAdmin(){
   if(!adminPass)return;
+  if(isEditing())return;
   const c=$('#adminContent');
   try{
     if(adminTab==='overview'){
