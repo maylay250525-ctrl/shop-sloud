@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="my">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin — ဈေးဆိုင်</title>
+<style>
+:root{--bg:#f7f3ec;--card:#fff;--text:#222;--muted:#777;--accent:#0d7a4f;--line:#e5ddd0}
+body.dark{--bg:#1a1a1a;--card:#262626;--text:#f0f0f0;--muted:#aaa;--line:#444}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text)}
+header{position:sticky;top:0;background:var(--card);border-bottom:1px solid var(--line);padding:10px 14px;display:flex;gap:8px;align-items:center;z-index:10;flex-wrap:wrap}
+header h1{font-size:19px;margin:0;flex:1}
+button{cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:8px;padding:8px 12px;font-size:14px}
+button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+button.warn{background:#b3261e;color:#fff;border-color:#b3261e}
+input,select,textarea{width:100%;padding:9px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--text);font-size:14px;margin:4px 0}
+main{max-width:960px;margin:0 auto;padding:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.tabs button.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{border-bottom:1px solid var(--line);padding:7px 5px;text-align:left;vertical-align:top}
+.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:12px;background:#eee;color:#333}
+.badge.pending{background:#fff3cd;color:#7a5b00}.badge.approved,.badge.delivered{background:#d4edda;color:#155724}
+.badge.rejected,.badge.cancelled{background:#f8d7da;color:#721c24}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.hidden{display:none}
+.notice{background:#fff3cd;color:#7a5b00;border-radius:8px;padding:10px;margin:8px 0}
+.muted{color:var(--muted);font-size:13px}
+a{color:var(--accent)}
+</style>
+</head>
+<body>
+<header>
+  <h1>🔐 Admin — ဈေးဆိုင်</h1>
+  <a href="/">← ဆိုင်သို့</a>
+  <button id="themeBtn">🌙</button>
+</header>
+<main>
+  <div class="card" id="adminGate">
+    <h2>Admin ဝင်ရန်</h2>
+    <p class="muted">Passcode ထည့်မှ ဝင်လို့ရမယ်။ (မူရင်း passcode: <b>admin123</b> — Render မှာ ADMIN_PASSCODE env var နဲ့ ပြောင်းနိုင်တယ်)</p>
+    <input id="adminPass" type="password" placeholder="Passcode">
+    <button class="primary" id="adminLogin">ဝင်မည်</button>
+    <div id="adminLoginMsg" class="muted"></div>
+  </div>
+  <div id="adminMain" class="hidden">
+    <div class="tabs" id="adminTabs"></div>
+    <div id="adminContent"></div>
+    <p class="muted">ဆိုင်ဘက်က ငွေဖြည့် / အော်ဒါအသစ်များ ၁၀ စက္ကန့်တစ်ခါ အလိုအလျောက် ပေါ်လာမယ်။</p>
+    <button id="adminLogout">Admin မှ ထွက်မည်</button>
+  </div>
+</main>
+<script>
+const $=s=>document.querySelector(s);
+let adminPass='', adminTab='overview', adminTimer=null, products=[];
+function fmt(n){return Number(n).toLocaleString()+' Ks'}
+function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+async function api(p,o={}){const r=await fetch(p,{...o,headers:{'Content-Type':'application/json',...(o.headers||{})}});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||r.status);return j}
+async function loadProducts(){products=await api('/api/products')}
+
+$('#themeBtn').addEventListener('click',()=>document.body.classList.toggle('dark'));
+const ADMIN_TABS=['overview','products','orders','delivery','wallet','topups','settings'];
+$('#adminLogin').addEventListener('click',async()=>{
+  try{await api('/api/admin/login',{method:'POST',body:JSON.stringify({passcode:$('#adminPass').value})});adminPass=$('#adminPass').value;$('#adminGate').classList.add('hidden');$('#adminMain').classList.remove('hidden');renderAdminTabs();loadAdmin();adminTimer=setInterval(loadAdmin,10000);}
+  catch(e){$('#adminLoginMsg').textContent='Passcode မှားနေတယ် / Wrong passcode'}
+});
+$('#adminLogout').addEventListener('click',()=>{adminPass='';clearInterval(adminTimer);$('#adminMain').classList.add('hidden');$('#adminGate').classList.remove('hidden')});
+function renderAdminTabs(){$('#adminTabs').innerHTML=ADMIN_TABS.map(x=>`<button class="${adminTab===x?'active':''}" onclick="setTab('${x}')">${x[0].toUpperCase()+x.slice(1)}</button>`).join('')}
+window.setTab=x=>{adminTab=x;renderAdminTabs();loadAdmin()};
+const ah={'x-admin-passcode':''};
+async function aapi(p,o={}){ah['x-admin-passcode']=adminPass;return api(p,{...o,headers:ah})}
+async function loadAdmin(){
+  if(!adminPass)return;
+  const c=$('#adminContent');
+  try{
+    if(adminTab==='overview'){
+      const o=await aapi('/api/admin/overview');
+      c.innerHTML=`<div class="card"><p>Products: <b>${o.products}</b> · Orders: <b>${o.orders}</b> · Pending orders: <b>${o.pendingOrders}</b> · Pending top-ups: <b>${o.pendingTopups}</b> · Revenue: <b>${fmt(o.revenue)}</b></p><h3>Low stock</h3>${o.lowStock.map(p=>`<div>${esc(p.name)} — ${p.stock}</div>`).join('')||'—'}</div>`;
+    }else if(adminTab==='products'){
+      await loadProducts();
+      c.innerHTML=`<div class="card"><h3>Add product</h3><input id="npName" placeholder="Name (Myanmar)"><input id="npPrice" type="number" placeholder="Price (Ks)"><input id="npStock" type="number" placeholder="Stock"><button class="primary" onclick="addProduct()">Add</button></div>`+
+      `<div class="card"><table><tr><th>Name</th><th>Price</th><th>Stock</th><th></th></tr>${products.map(p=>`<tr><td>${esc(p.name)}</td><td><input type="number" value="${p.price}" onchange="editProduct('${p.id}','price',this.value)"></td><td><input type="number" value="${p.stock}" onchange="editProduct('${p.id}','stock',this.value)"></td><td><button onclick="delProduct('${p.id}')">✕</button></td></tr>`).join('')}</table></div>`;
+    }else if(adminTab==='orders'){
+      const list=await aapi('/api/admin/orders');
+      c.innerHTML=`<div class="card"><table><tr><th>ID</th><th>Customer</th><th>Total</th><th>Status</th></tr>${list.map(o=>`<tr><td>${o.id}</td><td>${esc(o.customerName)}<br><span class="muted">${esc(o.phone)} · ${esc(o.township)}</span></td><td>${fmt(o.total)}</td><td><select onchange="setOrderStatus('${o.id}',this.value)">${['pending','confirmed','delivering','delivered','cancelled'].map(s=>`<option ${o.status===s?'selected':''}>${s}</option>`).join('')}</select></td></tr>`).join('')}</table></div>`;
+    }else if(adminTab==='delivery'){
+      const dz=await api('/api/delivery-zones');
+      c.innerHTML=`<div class="card"><p class="muted">Free delivery at/over ${fmt(dz.freeThreshold)} · Other townships ${fmt(dz.otherTownshipFee)}</p><table><tr><th>Township</th><th>Fee</th></tr>${dz.zones.map(z=>`<tr><td>${esc(z.name)}</td><td><input type="number" value="${z.fee}" onchange="editFee('${z.name}',this.value)"></td></tr>`).join('')}</table></div>`;
+    }else if(adminTab==='wallet'){
+      const list=await aapi('/api/admin/wallets');
+      c.innerHTML=`<div class="card">${list.map(w=>`<div><b>${esc(w.phone)}</b> — ${fmt(w.balance)}</div>`).join('')||'—'}</div>`;
+    }else if(adminTab==='topups'){
+      const list=await aapi('/api/admin/topups');
+      c.innerHTML=`<div class="card"><table><tr><th>ID</th><th>Sender</th><th>Amount</th><th>Txn</th><th>Status</th><th></th></tr>${list.map(x=>`<tr><td>${x.id}</td><td>${esc(x.senderName)}<br><span class="muted">${esc(x.senderPhone)}</span></td><td>${fmt(x.amount)}<br><span class="muted">${x.method}</span></td><td>${esc(x.transferId)}</td><td><span class="badge ${x.status}">${x.status}</span></td><td>${x.status==='pending'?`<button class="primary" onclick="topupAct('${x.id}','approve')">Approve</button> <button class="warn" onclick="topupAct('${x.id}','reject')">Reject</button>`:''}</td></tr>`).join('')}</table></div>`;
+    }else if(adminTab==='settings'){
+      const s=await aapi('/api/admin/settings');
+      c.innerHTML=`<div class="card"><h3>Recipient (KPay / WavePay)</h3><input id="sName" value="${esc(s.recipientName)}"><input id="sPhone" value="${esc(s.recipientPhone)}"><input id="sFree" type="number" value="${s.freeThreshold}"><button class="primary" onclick="saveSettings()">Save</button><div id="sMsg"></div></div>`;
+    }
+  }catch(e){c.innerHTML=`<div class="notice">❌ ${esc(e.message)}</div>`}
+}
+window.addProduct=async()=>{await aapi('/api/admin/products',{method:'POST',body:JSON.stringify({name:$('#npName').value,price:Number($('#npPrice').value),stock:Number($('#npStock').value)})});await loadProducts();loadAdmin()};
+window.editProduct=async(id,k,v)=>{await aapi('/api/admin/products/'+id,{method:'PATCH',body:JSON.stringify({[k]:Number(v)})});await loadProducts();loadAdmin()};
+window.delProduct=async id=>{if(confirm('Delete?')){await aapi('/api/admin/products/'+id,{method:'DELETE'});await loadProducts();loadAdmin()}};
+window.setOrderStatus=async(id,s)=>{await aapi('/api/admin/orders/'+id,{method:'PATCH',body:JSON.stringify({status:s})});loadAdmin()};
+window.editFee=async(name,v)=>{await aapi('/api/admin/delivery/'+encodeURIComponent(name),{method:'PATCH',body:JSON.stringify({fee:Number(v)})})};
+window.topupAct=async(id,act)=>{await aapi(`/api/admin/topups/${id}/${act}`,{method:'POST'});loadAdmin()};
+window.saveSettings=async()=>{await aapi('/api/admin/settings',{method:'PATCH',body:JSON.stringify({recipientName:$('#sName').value,recipientPhone:$('#sPhone').value,freeThreshold:Number($('#sFree').value)})});$('#sMsg').textContent='Saved ✅'};
+</script>
+</body>
+</html>

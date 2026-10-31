@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="my">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ဈေးဆိုင်</title>
+<style>
+:root{--bg:#f7f3ec;--card:#fff;--text:#222;--muted:#777;--accent:#0d7a4f;--accent2:#e8a13a;--line:#e5ddd0}
+body.dark{--bg:#1a1a1a;--card:#262626;--text:#f0f0f0;--muted:#aaa;--line:#444}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text)}
+header{position:sticky;top:0;background:var(--card);border-bottom:1px solid var(--line);padding:10px 14px;display:flex;gap:8px;align-items:center;z-index:10;flex-wrap:wrap}
+header h1{font-size:19px;margin:0;flex:1}
+button{cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:8px;padding:8px 12px;font-size:14px}
+button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+button.warn{background:#b3261e;color:#fff;border-color:#b3261e}
+input,select,textarea{width:100%;padding:9px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--text);font-size:14px;margin:4px 0}
+main{max-width:960px;margin:0 auto;padding:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
+.prod{border:1px solid var(--line);border-radius:10px;padding:10px}
+.prod h3{margin:0 0 4px;font-size:15px}
+.price{color:var(--accent);font-weight:700}
+.muted{color:var(--muted);font-size:13px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.tabs button.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{border-bottom:1px solid var(--line);padding:7px 5px;text-align:left;vertical-align:top}
+.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:12px;background:#eee;color:#333}
+.badge.pending{background:#fff3cd;color:#7a5b00}.badge.approved,.badge.delivered{background:#d4edda;color:#155724}
+.badge.rejected,.badge.cancelled{background:#f8d7da;color:#721c24}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.hidden{display:none}
+.notice{background:#fff3cd;color:#7a5b00;border-radius:8px;padding:10px;margin:8px 0}
+</style>
+</head>
+<body>
+<header>
+  <h1>🛒 <span data-t="shop">ဈေးဆိုင်</span></h1>
+  <button id="langBtn">English</button>
+  <button id="themeBtn">🌙</button>
+</header>
+<main>
+  <!-- ============ SHOP VIEW ============ -->
+  <div id="shopView">
+    <div class="card">
+      <div class="row">
+        <input id="search" placeholder="ရှာပါ… / Search…" style="flex:2">
+        <select id="catFilter" style="flex:1"><option value="">— Category —</option></select>
+      </div>
+    </div>
+    <div id="products" class="grid"></div>
+
+    <div class="card">
+      <h2 data-t="cart">ခြင်းတောင်း (Cart)</h2>
+      <div id="cart"></div>
+      <div id="checkout" class="hidden">
+        <h3 data-t="checkout">မှာယူမည် (Checkout)</h3>
+        <input id="coName" placeholder="နာမည် / Name">
+        <input id="coPhone" placeholder="ဖုန်း / Phone">
+        <input id="coAddress" placeholder="လိပ်စာ / Address">
+        <select id="coTownship"></select>
+        <select id="coPay"><option value="cash">ငွေသားဖြင့် ပေးမည် (Cash)</option><option value="wallet">Wallet ဖြင့် ပေးမည်</option></select>
+        <div id="feeLine" class="muted"></div>
+        <button class="primary" id="placeOrder" data-t="order">မှာယူမည်</button>
+        <div id="orderMsg"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 data-t="wallet">Wallet — ငွေဖြည့်မည်</h2>
+      <div class="row"><input id="wPhone" placeholder="ဖုန်း / Phone" style="flex:1"><button id="wCheck">လက်ကျန်ကြည့်မည်</button></div>
+      <div id="wBalance" class="muted"></div>
+      <div id="wLedger"></div>
+      <h3 data-t="topup">ငွေဖြည့်မည် (Top-up)</h3>
+      <input id="tAmount" type="number" placeholder="ပမာဏ (Ks)">
+      <select id="tMethod"><option value="kpay">KBZPay</option><option value="wavepay">WavePay</option></select>
+      <div id="recipientBox" class="notice hidden"></div>
+      <input id="tName" placeholder="ငွေလွှဲသူ နာမည်">
+      <input id="tPhone" placeholder="ငွေလွှဲသူ ဖုန်း">
+      <input id="tTxn" placeholder="ငွေလွှဲ ID / Transfer ID">
+      <button class="primary" id="tSubmit" data-t="sendTopup">ပို့မည်</button>
+      <div id="tMsg"></div>
+      <h3 data-t="myTopups">ကျွန်ုပ်၏ တောင်းဆိုမှုများ</h3>
+      <div id="myTopups" class="muted">—</div>
+    </div>
+
+    <div class="card">
+      <h2 data-t="orders">ကျွန်ုပ်၏ အော်ဒါများ</h2>
+      <div class="row"><input id="oPhone" placeholder="ဖုန်း / Phone" style="flex:1"><button id="oCheck">ကြည့်မည်</button></div>
+      <div id="myOrders"></div>
+    </div>
+  </div>
+</main>
+<script>
+const $=s=>document.querySelector(s);
+let lang='my', products=[], zones=[], settings={}, cart={}, favs=JSON.parse(localStorage.getItem('favs')||'[]');
+const T={
+ my:{shop:'ဈေးဆိုင်',cart:'ခြင်းတောင်း (Cart)',checkout:'မှာယူမည် (Checkout)',order:'မှာယူမည်',wallet:'Wallet — ငွေဖြည့်မည်',topup:'ငွေဖြည့်မည် (Top-up)',sendTopup:'ပို့မည်',myTopups:'ကျွန်ုပ်၏ တောင်းဆိုမှုများ',orders:'ကျွန်ုပ်၏ အော်ဒါများ'},
+ en:{shop:'Shop',cart:'Cart',checkout:'Checkout',order:'Place Order',wallet:'Wallet — Top-up',topup:'Top-up',sendTopup:'Submit',myTopups:'My top-up requests',orders:'My orders'}};
+function t(k){return (T[lang]||T.my)[k]||k}
+function fmt(n){return Number(n).toLocaleString()+' Ks'}
+function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+
+async function api(p,o={}){const r=await fetch(p,{...o,headers:{'Content-Type':'application/json',...(o.headers||{})}});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||r.status);return j}
+
+async function loadShop(){
+  products=await api('/api/products');
+  const dz=await api('/api/delivery-zones'); zones=dz.zones;
+  settings=await api('/api/settings');
+  const cats=[...new Set(products.map(p=>lang==='en'?p.categoryEn:p.category))];
+  $('#catFilter').innerHTML='<option value="">— Category —</option>'+cats.map(c=>`<option>${esc(c)}</option>`).join('');
+  $('#coTownship').innerHTML=zones.map(z=>`<option value="${esc(z.name)}">${esc(z.name)} — ${fmt(z.fee)}</option>`).join('')+`<option value="Other">Other — ${fmt(settings.freeThreshold?4000:4000)}</option>`;
+  renderProducts(); renderCart();
+}
+function renderProducts(){
+  const q=($('#search').value||'').toLowerCase(), cf=$('#catFilter').value;
+  const list=products.filter(p=>{
+    const nm=(lang==='en'?p.nameEn:p.name).toLowerCase();
+    const cat=lang==='en'?p.categoryEn:p.category;
+    return nm.includes(q)&&(!cf||cat===cf);
+  });
+  $('#products').innerHTML=list.map(p=>`<div class="prod"><h3>${esc(lang==='en'?p.nameEn:p.name)}</h3><div class="muted">${esc(lang==='en'?p.categoryEn:p.category)} · stock ${p.stock}</div><div class="price">${fmt(p.price)}</div><div class="row"><button onclick="addCart('${p.id}')">+ Cart</button><button onclick="toggleFav('${p.id}')">${favs.includes(p.id)?'★':'☆'}</button></div></div>`).join('')||'<p class="muted">—</p>';
+}
+window.addCart=id=>{cart[id]=(cart[id]||0)+1;renderCart()};
+window.toggleFav=id=>{favs=favs.includes(id)?favs.filter(x=>x!==id):[...favs,id];localStorage.setItem('favs',JSON.stringify(favs));renderProducts()};
+function cartSubtotal(){return Object.entries(cart).reduce((s,[id,q])=>{const p=products.find(x=>x.id===id);return s+(p?p.price*q:0)},0)}
+function renderCart(){
+  const entries=Object.entries(cart);
+  if(!entries.length){$('#cart').innerHTML='<p class="muted">Cart is empty.</p>';$('#checkout').classList.add('hidden');return}
+  $('#cart').innerHTML=entries.map(([id,q])=>{const p=products.find(x=>x.id===id);return `<div class="row"><span style="flex:1">${esc(p.name)} × ${q} — ${fmt(p.price*q)}</span><button onclick="chgCart('${id}',-1)">−</button><button onclick="chgCart('${id}',1)">+</button></div>`}).join('')+`<p><b>Subtotal: ${fmt(cartSubtotal())}</b></p>`;
+  $('#checkout').classList.remove('hidden'); updateFee();
+}
+window.chgCart=(id,d)=>{cart[id]=(cart[id]||0)+d;if(cart[id]<=0)delete cart[id];renderCart()};
+function updateFee(){
+  const sub=cartSubtotal(), tw=$('#coTownship').value;
+  const z=zones.find(x=>x.name===tw);
+  const fee=sub>=settings.freeThreshold?0:(z?z.fee:4000);
+  $('#feeLine').textContent=`Delivery: ${fee===0?'FREE':fmt(fee)} · Total: ${fmt(sub+fee)}${sub>=settings.freeThreshold?' (free delivery ≥ '+fmt(settings.freeThreshold)+')':''}`;
+}
+$('#coTownship').addEventListener('change',updateFee);
+$('#search').addEventListener('input',renderProducts);
+$('#catFilter').addEventListener('change',renderProducts);
+$('#placeOrder').addEventListener('click',async()=>{
+  try{
+    const items=Object.entries(cart).map(([productId,qty])=>({productId,qty}));
+    const o=await api('/api/orders',{method:'POST',body:JSON.stringify({customerName:$('#coName').value,phone:$('#coPhone').value,address:$('#coAddress').value,township:$('#coTownship').value,items,paymentMethod:$('#coPay').value})});
+    $('#orderMsg').innerHTML=`<div class="notice">✅ Order ${o.id} — Total ${fmt(o.total)} · Status: ${o.status}</div>`;
+    cart={}; renderCart(); loadShop();
+  }catch(e){$('#orderMsg').innerHTML=`<div class="notice">❌ ${esc(e.message)}</div>`}
+});
+</script>
+<script>
+// ---- Wallet / top-up ----
+$('#tMethod').addEventListener('change',showRecipient);
+function showRecipient(){
+  const m=$('#tMethod').value;
+  $('#recipientBox').classList.remove('hidden');
+  $('#recipientBox').innerHTML=`${m==='kpay'?'KBZPay':'WavePay'} → <b>${esc(settings.recipientName||'')}</b> · ${esc(settings.recipientPhone||'')}<br><span class="muted">ငွေလွှဲပြီးမှ အောက်မှာ နာမည် / ဖုန်း / ငွေလွှဲ ID ထည့်ပြီး ပို့ပါ။ Admin အတည်ပြုမှ wallet ထဲ ငွေရောက်မယ်။</span>`;
+}
+$('#tSubmit').addEventListener('click',async()=>{
+  try{
+    const r=await api('/api/topups',{method:'POST',body:JSON.stringify({senderName:$('#tName').value,senderPhone:$('#tPhone').value,method:$('#tMethod').value,amount:Number($('#tAmount').value),transferId:$('#tTxn').value})});
+    $('#tMsg').innerHTML=`<div class="notice">✅ ${r.id} — ${fmt(r.amount)} · Admin အတည်ပြုဖို့ စောင့်နေတယ် (pending)</div>`;
+    loadMyTopups();
+  }catch(e){$('#tMsg').innerHTML=`<div class="notice">❌ ${esc(e.message)}</div>`}
+});
+$('#wCheck').addEventListener('click',async()=>{
+  const ph=$('#wPhone').value; if(!ph)return;
+  const w=await api('/api/wallet?phone='+encodeURIComponent(ph));
+  $('#wBalance').innerHTML=`<b>Balance: ${fmt(w.balance)}</b>`;
+  $('#wLedger').innerHTML=w.ledger.slice().reverse().map(l=>`<div class="muted">${l.date.slice(0,10)} · ${l.type} ${fmt(l.amount)} ${l.transferId?esc(l.transferId):''}</div>`).join('');
+  loadMyTopups();
+});
+async function loadMyTopups(){
+  const ph=$('#tPhone').value||$('#wPhone').value; if(!ph)return;
+  const list=await api('/api/topups?phone='+encodeURIComponent(ph));
+  $('#myTopups').innerHTML=list.map(x=>`<div>${x.id} · ${fmt(x.amount)} · ${x.method} · ${esc(x.transferId)} — <span class="badge ${x.status}">${x.status}</span></div>`).join('')||'—';
+}
+$('#oCheck').addEventListener('click',async()=>{
+  const ph=$('#oPhone').value; if(!ph)return;
+  const list=await api('/api/orders?phone='+encodeURIComponent(ph));
+  $('#myOrders').innerHTML=list.map(o=>`<div class="card" style="margin:8px 0"><b>${o.id}</b> · ${fmt(o.total)} · <span class="badge ${o.status}">${o.status}</span><br><span class="muted">${o.items.map(i=>esc(i.name)+' ×'+i.qty).join(', ')} · ${esc(o.township)}</span></div>`).join('')||'<p class="muted">—</p>';
+});
+
+// ---- Language / theme ----
+$('#langBtn').addEventListener('click',()=>{lang=lang==='my'?'en':'my';$('#langBtn').textContent=lang==='my'?'English':'မြန်မာ';document.querySelectorAll('[data-t]').forEach(el=>el.textContent=t(el.dataset.t));loadShop()});
+$('#themeBtn').addEventListener('click',()=>document.body.classList.toggle('dark'));
+
+// ---- init ----
+loadShop(); showRecipient();
+</script>
+</body>
+</html>
