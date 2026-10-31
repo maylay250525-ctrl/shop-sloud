@@ -133,6 +133,27 @@ app.get('/api/auth/me', requireAuth, ah(async (req, res) => {
   res.json({ id: user.id, name: user.name, phone: user.phone });
 }));
 
+// Change own password (logged in).
+app.post('/api/auth/change-password', requireAuth, ah(async (req, res) => {
+  const { currentPassword, newPassword } = req.body || {};
+  if (!newPassword || String(newPassword).length < 4) return res.status(400).json({ error: 'new password min 4 chars' });
+  const user = await store.getUserByPhone(req.user.phone);
+  if (!user || hashPassword(String(currentPassword || ''), user.salt) !== user.passwordHash) {
+    return res.status(401).json({ error: 'wrong current password' });
+  }
+  const salt = crypto.randomBytes(16).toString('hex');
+  await store.updateUserPassword(user.phone, hashPassword(String(newPassword), salt), salt);
+  res.json({ ok: true });
+}));
+
+// Public shop contact — shown on the login screen so a customer who forgot
+// their password knows whom to call. This is the same payment contact every
+// logged-in customer already sees in the top-up flow.
+app.get('/api/shop-info', ah(async (req, res) => {
+  const s = await store.getSettings();
+  res.json({ recipientName: s.recipientName, recipientPhone: s.recipientPhone });
+}));
+
 // ---------------------------------------------------------------------------
 // Shop API — login required (the shop asks for login as soon as it opens).
 // The phone always comes from the login token, never from the request,
@@ -332,6 +353,22 @@ app.patch('/api/admin/settings', requireAdmin, ah(async (req, res) => {
 }));
 
 app.get('/api/admin/wallets', requireAdmin, ah(async (req, res) => res.json(await store.listWallets())));
+
+// Customer accounts (no password hashes are ever sent out).
+app.get('/api/admin/users', requireAdmin, ah(async (req, res) => res.json(await store.listUsers())));
+
+// Admin resets a customer's password (for "forgot password": the customer
+// calls the admin, the admin sets a temporary password here, and the
+// customer changes it themselves in Profile after logging in).
+app.post('/api/admin/users/:phone/reset-password', requireAdmin, ah(async (req, res) => {
+  const { newPassword } = req.body || {};
+  if (!newPassword || String(newPassword).length < 4) return res.status(400).json({ error: 'new password min 4 chars' });
+  const salt = crypto.randomBytes(16).toString('hex');
+  const u = await store.updateUserPassword(
+    decodeURIComponent(req.params.phone), hashPassword(String(newPassword), salt), salt);
+  if (!u) return res.status(404).json({ error: 'not found' });
+  res.json({ ok: true });
+}));
 
 // Wipe all customer/user data (orders, top-ups, wallets, accounts) for a
 // fresh start. Products, delivery zones and settings are kept.

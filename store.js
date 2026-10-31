@@ -148,6 +148,14 @@ class JsonStore {
   async saveWallet(phone, wallet) { this.db.wallets[phone] = wallet; this._persist(); return wallet; }
   async getUserByPhone(phone) { return this.db.users.find(u => u.phone === phone) || null; }
   async createUser(u) { this.db.users.push(u); this._persist(); return u; }
+  async listUsers() { return this.db.users.map(u => ({ id: u.id, name: u.name, phone: u.phone, createdAt: u.createdAt })); }
+  async updateUserPassword(phone, passwordHash, salt) {
+    const u = this.db.users.find(x => x.phone === phone);
+    if (!u) return null;
+    u.passwordHash = passwordHash; u.salt = salt;
+    this._persist();
+    return u;
+  }
   // Wipe all customer/user data for a fresh start. Shop setup is kept:
   // products, delivery zones and settings are NOT touched.
   async resetUserData() {
@@ -378,6 +386,15 @@ class PgStore {
       'INSERT INTO users (id, name, phone, password_hash, salt, created_at) VALUES ($1,$2,$3,$4,$5,$6)',
       [u.id, u.name, u.phone, u.passwordHash, u.salt, u.createdAt]);
     return u;
+  }
+  async listUsers() {
+    const { rows } = await this.pool.query('SELECT id, name, phone, created_at FROM users ORDER BY created_at DESC');
+    return rows.map(r => ({ id: r.id, name: r.name, phone: r.phone, createdAt: new Date(r.created_at).toISOString() }));
+  }
+  async updateUserPassword(phone, passwordHash, salt) {
+    const { rows } = await this.pool.query(
+      'UPDATE users SET password_hash=$2, salt=$3 WHERE phone=$1 RETURNING *', [phone, passwordHash, salt]);
+    return rows.length ? userFromRow(rows[0]) : null;
   }
   // Wipe all customer/user data for a fresh start. Shop setup is kept:
   // products, delivery zones and settings are NOT touched.
