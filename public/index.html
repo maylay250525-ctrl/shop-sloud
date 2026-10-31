@@ -81,7 +81,7 @@ th,td{border-bottom:1px solid var(--line);padding:7px 5px;text-align:left;vertic
   <div id="walletView" class="hidden">
     <div class="card">
       <h2 data-t="wallet">Wallet — ငွေဖြည့်မည်</h2>
-      <div class="row"><input id="wPhone" placeholder="ဖုန်း / Phone" style="flex:1"><button id="wCheck">လက်ကျန်ကြည့်မည်</button></div>
+      <input id="wPhone" placeholder="ဖုန်း / Phone">
       <div id="wBalance" class="muted"></div>
       <div id="wLedger"></div>
       <h3 data-t="topup">ငွေဖြည့်မည် (Top-up)</h3>
@@ -141,6 +141,7 @@ async function api(p,o={}){const r=await fetch(p,{...o,headers:{'Content-Type':'
 function showView(v){
   ['shop','cart','wallet','profile'].forEach(x=>$('#'+x+'View').classList.toggle('hidden',x!==v));
   document.querySelectorAll('#bottomNav button').forEach(b=>b.classList.toggle('active',b.dataset.view===v));
+  if(v==='wallet'&&typeof loadWallet==='function')loadWallet();
   window.scrollTo({top:0});
 }
 document.querySelectorAll('#bottomNav button').forEach(b=>b.addEventListener('click',()=>showView(b.dataset.view)));
@@ -167,6 +168,7 @@ async function refreshShop(){
     $('#coTownship').innerHTML=zones.map(z=>`<option value="${esc(z.name)}">${esc(z.name)} — ${fmt(z.fee)}</option>`).join('')+`<option value="Other">Other — ${fmt(settings.freeThreshold?4000:4000)}</option>`;
     if(tw)$('#coTownship').value=tw;
     renderProducts(); renderFavs(); showRecipient(); updateFee();
+    if(!$('#walletView').classList.contains('hidden')&&typeof loadWallet==='function')loadWallet();
     const now=new Date();
     $('#lastUpdated').textContent='✓ '+now.getHours()+':'+String(now.getMinutes()).padStart(2,'0')+':'+String(now.getSeconds()).padStart(2,'0');
   }catch(e){}
@@ -228,13 +230,18 @@ $('#tSubmit').addEventListener('click',async()=>{
     loadMyTopups();
   }catch(e){$('#tMsg').innerHTML=`<div class="notice">❌ ${esc(e.message)}</div>`}
 });
-$('#wCheck').addEventListener('click',async()=>{
-  const ph=$('#wPhone').value; if(!ph)return;
-  const w=await api('/api/wallet?phone='+encodeURIComponent(ph));
-  $('#wBalance').innerHTML=`<b>Balance: ${fmt(w.balance)}</b>`;
-  $('#wLedger').innerHTML=w.ledger.slice().reverse().map(l=>`<div class="muted">${l.date.slice(0,10)} · ${l.type} ${fmt(l.amount)} ${l.transferId?esc(l.transferId):''}</div>`).join('');
-  loadMyTopups();
-});
+async function loadWallet(){
+  const ph=$('#wPhone').value.trim();
+  if(!ph){$('#wBalance').innerHTML='<span class="muted">ဖုန်းနံပါတ် ထည့်ပေးပါ — Profile မှာ သိမ်းထားရင် အလိုလို ပြမယ်</span>';$('#wLedger').innerHTML='';return}
+  try{
+    const w=await api('/api/wallet?phone='+encodeURIComponent(ph));
+    $('#wBalance').innerHTML=`<b>Balance: ${fmt(w.balance)}</b>`;
+    $('#wLedger').innerHTML=w.ledger.slice().reverse().map(l=>`<div class="muted">${l.date.slice(0,10)} · ${l.type} ${fmt(l.amount)} ${l.transferId?esc(l.transferId):''}</div>`).join('')||'<p class="muted">—</p>';
+    loadMyTopups();
+  }catch(e){$('#wBalance').innerHTML=`<div class="notice">❌ ${esc(e.message)}</div>`}
+}
+let wTimer=null;
+$('#wPhone').addEventListener('input',()=>{clearTimeout(wTimer);wTimer=setTimeout(loadWallet,600)});
 async function loadMyTopups(){
   const ph=$('#tPhone').value||$('#wPhone').value; if(!ph)return;
   const list=await api('/api/topups?phone='+encodeURIComponent(ph));
