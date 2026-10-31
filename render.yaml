@@ -8,6 +8,10 @@ services:
     envVars:
       - key: ADMIN_PASSCODE
         sync: false
+      - key: AUTH_SECRET
+        # Signs customer login tokens (48h sessions). Auto-generated once
+        # by Render — never commit a real value here.
+        generateValue: true
       - key: DATABASE_URL
         # Optional but strongly recommended for a real shop: paste the
         # connection string of a FREE Postgres database (Neon / Supabase).

@@ -61,6 +61,7 @@ function seedDb() {
     orders: [],
     topups: [],
     wallets: {},
+    users: [],
     counters: { order: 0, topup: 0 },
   };
 }
@@ -75,7 +76,11 @@ class JsonStore {
   }
   _load() {
     try {
-      if (fs.existsSync(DB_PATH)) return JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
+      if (fs.existsSync(DB_PATH)) {
+        const db = JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
+        if (!Array.isArray(db.users)) db.users = []; // migrate old db.json files
+        return db;
+      }
     } catch (e) { console.error('DB read failed, reseeding:', e.message); }
     const db = seedDb();
     this._save(db);
@@ -141,6 +146,15 @@ class JsonStore {
   }
   async getWallet(phone) { return this.db.wallets[phone] || { balance: 0, ledger: [] }; }
   async saveWallet(phone, wallet) { this.db.wallets[phone] = wallet; this._persist(); return wallet; }
+  async getUserByPhone(phone) { return this.db.users.find(u => u.phone === phone) || null; }
+  async createUser(u) { this.db.users.push(u); this._persist(); return u; }
+  // Wipe all customer/user data for a fresh start. Shop setup is kept:
+  // products, delivery zones and settings are NOT touched.
+  async resetUserData() {
+    this.db.orders = []; this.db.topups = []; this.db.wallets = {}; this.db.users = [];
+    this.db.counters = { order: 0, topup: 0 };
+    this._persist();
+  }
   async listWallets() {
     return Object.entries(this.db.wallets).map(([phone, w]) => ({ phone, balance: w.balance, ledger: w.ledger }));
   }
@@ -181,6 +195,10 @@ CREATE TABLE IF NOT EXISTS wallet_entries (
 CREATE TABLE IF NOT EXISTS customers (
   phone TEXT PRIMARY KEY, name TEXT, address TEXT, updated_at TIMESTAMPTZ NOT NULL
 );
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY, name TEXT NOT NULL, phone TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL, salt TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL
+);
 CREATE TABLE IF NOT EXISTS counters (
   name TEXT PRIMARY KEY, value INTEGER NOT NULL
 );
@@ -202,6 +220,13 @@ function topupFromRow(r) {
     id: r.id, senderName: r.sender_name, senderPhone: r.sender_phone, method: r.method,
     amount: r.amount, transferId: r.transfer_id, status: r.status,
     date: new Date(r.created_at).toISOString(),
+  };
+}
+function userFromRow(r) {
+  return {
+    id: r.id, name: r.name, phone: r.phone,
+    passwordHash: r.password_hash, salt: r.salt,
+    createdAt: new Date(r.created_at).toISOString(),
   };
 }
 
@@ -343,6 +368,26 @@ class PgStore {
   async listWallets() {
     const { rows } = await this.pool.query('SELECT * FROM wallet_entries ORDER BY phone');
     return rows.map(r => ({ phone: r.phone, balance: r.balance, ledger: r.ledger }));
+  }
+  async getUserByPhone(phone) {
+    const { rows } = await this.pool.query('SELECT * FROM users WHERE phone = $1', [phone]);
+    return rows.length ? userFromRow(rows[0]) : null;
+  }
+  async createUser(u) {
+    await this.pool.query(
+      'INSERT INTO users (id, name, phone, password_hash, salt, created_at) VALUES ($1,$2,$3,$4,$5,$6)',
+      [u.id, u.name, u.phone, u.passwordHash, u.salt, u.createdAt]);
+    return u;
+  }
+  // Wipe all customer/user data for a fresh start. Shop setup is kept:
+  // products, delivery zones and settings are NOT touched.
+  async resetUserData() {
+    await this.pool.query('DELETE FROM orders');
+    await this.pool.query('DELETE FROM topup_requests');
+    await this.pool.query('DELETE FROM wallet_entries');
+    await this.pool.query('DELETE FROM customers');
+    await this.pool.query('DELETE FROM users');
+    await this.pool.query('UPDATE counters SET value = 0');
   }
   async nextCounter(name) {
     const { rows } = await this.pool.query(
