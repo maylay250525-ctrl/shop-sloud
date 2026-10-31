@@ -58,7 +58,7 @@ let adminPass='', adminTab='overview', adminTimer=null, products=[];
 function fmt(n){return Number(n).toLocaleString()+' Ks'}
 function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 async function api(p,o={}){const r=await fetch(p,{...o,headers:{'Content-Type':'application/json',...(o.headers||{})}});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||r.status);return j}
-async function loadProducts(){products=await api('/api/products')}
+async function loadProducts(){products=await aapi('/api/admin/products')}
 
 $('#themeBtn').addEventListener('click',()=>document.body.classList.toggle('dark'));
 const ADMIN_TABS=['overview','products','orders','delivery','wallet','topups','users','settings'];
@@ -94,7 +94,7 @@ async function loadAdmin(){
       const list=await aapi('/api/admin/orders');
       c.innerHTML=`<div class="card"><table><tr><th>ID</th><th>Customer</th><th>Total</th><th>Status</th></tr>${list.map(o=>`<tr><td>${o.id}</td><td>${esc(o.customerName)}<br><span class="muted">${esc(o.phone)} · ${esc(o.township)}</span></td><td>${fmt(o.total)}</td><td><select onchange="setOrderStatus('${o.id}',this.value)">${['pending','confirmed','delivering','delivered','cancelled'].map(s=>`<option ${o.status===s?'selected':''}>${s}</option>`).join('')}</select></td></tr>`).join('')}</table></div>`;
     }else if(adminTab==='delivery'){
-      const dz=await api('/api/delivery-zones');
+      const dz=await aapi('/api/admin/delivery-zones');
       c.innerHTML=`<div class="card"><p class="muted">Free delivery at/over ${fmt(dz.freeThreshold)} · Other townships ${fmt(dz.otherTownshipFee)}</p><table><tr><th>Township</th><th>Fee</th></tr>${dz.zones.map(z=>`<tr><td>${esc(z.name)}</td><td><input type="number" value="${z.fee}" onchange="editFee('${z.name}',this.value)"></td></tr>`).join('')}</table></div>`;
     }else if(adminTab==='wallet'){
       const list=await aapi('/api/admin/wallets');
