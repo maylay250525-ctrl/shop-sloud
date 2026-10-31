@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: shop-cloud
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: ADMIN_PASSCODE
+        sync: false
+      - key: DATABASE_URL
+        # Optional but strongly recommended for a real shop: paste the
+        # connection string of a FREE Postgres database (Neon / Supabase).
+        # Without it the app uses data/db.json, which Render free wipes on
+        # every spin-down / restart. Never commit a real URL here — set it
+        # in the Render dashboard instead (Environment tab).
+        sync: false
+      - key: NODE_ENV
+        value: production
