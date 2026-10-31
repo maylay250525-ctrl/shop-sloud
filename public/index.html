@@ -53,6 +53,7 @@ th,td{border-bottom:1px solid var(--line);padding:7px 5px;text-align:left;vertic
     <div class="card">
       <input id="search" placeholder="ရှာပါ… / Search…">
       <div id="catChips" class="chips"></div>
+      <div class="row"><button id="refreshBtn">🔄 အသစ်စစ်မည်</button><span id="lastUpdated" class="muted"></span></div>
     </div>
     <div id="products" class="grid"></div>
   </div>
@@ -155,6 +156,23 @@ async function loadShop(){
   $('#coTownship').innerHTML=zones.map(z=>`<option value="${esc(z.name)}">${esc(z.name)} — ${fmt(z.fee)}</option>`).join('')+`<option value="Other">Other — ${fmt(settings.freeThreshold?4000:4000)}</option>`;
   renderProducts(); renderCart(); renderFavs(); showRecipient(); prefillProfile();
 }
+// Silent auto-refresh: re-fetch products, zones and settings every 15s.
+// Only re-renders lists/prices/fees — never touches what the user is typing.
+async function refreshShop(){
+  try{
+    products=await api('/api/products');
+    const dz=await api('/api/delivery-zones'); zones=dz.zones;
+    settings=await api('/api/settings');
+    const tw=$('#coTownship').value;
+    $('#coTownship').innerHTML=zones.map(z=>`<option value="${esc(z.name)}">${esc(z.name)} — ${fmt(z.fee)}</option>`).join('')+`<option value="Other">Other — ${fmt(settings.freeThreshold?4000:4000)}</option>`;
+    if(tw)$('#coTownship').value=tw;
+    renderProducts(); renderFavs(); showRecipient(); updateFee();
+    const now=new Date();
+    $('#lastUpdated').textContent='✓ '+now.getHours()+':'+String(now.getMinutes()).padStart(2,'0')+':'+String(now.getSeconds()).padStart(2,'0');
+  }catch(e){}
+}
+$('#refreshBtn').addEventListener('click',refreshShop);
+setInterval(refreshShop,15000);
 function renderProducts(){
   const q=($('#search').value||'').toLowerCase();
   const list=products.filter(p=>{
