@@ -25,6 +25,12 @@ main{max-width:960px;margin:0 auto;padding:14px}
 .prod{border:1px solid var(--line);border-radius:16px;padding:10px;display:flex;flex-direction:column;background:var(--card)}
 .prod-emoji{font-size:46px;text-align:center;padding:16px 0 12px;border-radius:12px;margin-bottom:8px}
 .prod-img{width:100%;height:110px;object-fit:cover;border-radius:12px;margin-bottom:8px}
+#announceBar{display:flex;align-items:center;gap:8px;background:#fff;color:#000;padding:8px 10px;border-bottom:1px solid #eee;box-shadow:0 2px 8px rgba(0,0,0,.08);font-size:14px;font-weight:600}
+.ann-view{flex:1;overflow:hidden;white-space:nowrap}
+#announceTrack{display:inline-block;padding-left:100%;will-change:transform;animation-name:announceScroll;animation-timing-function:linear;animation-iteration-count:infinite}
+@keyframes announceScroll{from{transform:translateX(0)}to{transform:translateX(-100%)}}
+.ann-ic{flex:0 0 auto}
+.ann-x{flex:0 0 auto;background:none;border:0;color:#666;font-size:14px;padding:2px 6px;cursor:pointer}
 .prod h3{margin:0;font-size:15px;flex:1}
 .price{color:var(--accent);font-weight:800;font-size:16px;margin:4px 0}
 .muted{color:var(--muted);font-size:13px}
@@ -63,6 +69,8 @@ body.dark #bottomNav button.active{background:#1d3a2c}
 </style>
 </head>
 <body>
+<!-- Announcement ticker: white bar, black text, right-to-left, 4 passes then hides -->
+<div id="announceBar" class="hidden"><span class="ann-ic">📢</span><div class="ann-view"><span id="announceTrack"></span></div><button class="ann-x" onclick="hideAnnouncement()">✕</button></div>
 <!-- ============ LOGIN / REGISTER ============ -->
 <div id="authScreen" class="hidden">
   <div class="auth-card">
@@ -226,7 +234,7 @@ async function loadShop(){
   $('#catChips').innerHTML=`<button data-cat="" class="${selectedCat===''?'active':''}">${esc(t('all'))}</button>`+cats.map(c=>`<button data-cat="${esc(c)}" class="${selectedCat===c?'active':''}">${esc(c)}</button>`).join('');
   document.querySelectorAll('#catChips button').forEach(b=>b.addEventListener('click',()=>{selectedCat=b.dataset.cat;document.querySelectorAll('#catChips button').forEach(x=>x.classList.toggle('active',x===b));renderProducts()}));
   $('#coTownship').innerHTML=zones.map(z=>`<option value="${esc(z.name)}">${esc(z.name)} — ${fmt(z.fee)}</option>`).join('')+`<option value="Other">Other — ${fmt(settings.freeThreshold?4000:4000)}</option>`;
-  renderProducts(); renderCart(); renderFavs(); showRecipient(); prefillProfile();
+  renderProducts(); renderCart(); renderFavs(); showRecipient(); prefillProfile(); showAnnouncement();
 }
 // Silent auto-refresh: re-fetch products, zones and settings every 15s.
 // Only re-renders lists/prices/fees — never touches what the user is typing.
@@ -241,7 +249,7 @@ async function refreshShop(){
     const tw=$('#coTownship').value;
     $('#coTownship').innerHTML=zones.map(z=>`<option value="${esc(z.name)}">${esc(z.name)} — ${fmt(z.fee)}</option>`).join('')+`<option value="Other">Other — ${fmt(settings.freeThreshold?4000:4000)}</option>`;
     if(tw)$('#coTownship').value=tw;
-    renderProducts(); renderFavs(); showRecipient(); updateFee();
+    renderProducts(); renderFavs(); showRecipient(); updateFee(); showAnnouncement();
     if(!$('#walletView').classList.contains('hidden')&&typeof loadWallet==='function')loadWallet();
     const now=new Date();
     $('#lastUpdated').textContent='✓ '+now.getHours()+':'+String(now.getMinutes()).padStart(2,'0')+':'+String(now.getSeconds()).padStart(2,'0');
@@ -328,8 +336,29 @@ function saveSession(token,user){
 function logout(){
   authToken='';authUser=null;localStorage.removeItem('shopToken');
   cart={};renderCart();stopRefresh();
+  $('#announceBar').classList.add('hidden');
   showAuth('login');
 }
+// ---- Announcement ticker ----
+// White bar, black text, scrolls right-to-left. Shows the full text 4 times,
+// then hides (until the Admin changes the text). The ✕ button hides it early.
+let announceText='', announceCount=0;
+function showAnnouncement(){
+  const bar=$('#announceBar'), track=$('#announceTrack');
+  const txt=(settings.announcement||'').trim();
+  if(!txt){bar.classList.add('hidden');announceText='';return}
+  if(txt===announceText)return; // same text: keep current state (showing or already done)
+  announceText=txt; announceCount=0;
+  track.textContent=txt;
+  track.style.animationDuration=Math.min(30,Math.max(8,Math.round(txt.length*0.25)))+'s';
+  track.style.animation='none';void track.offsetWidth;track.style.animation='';
+  bar.classList.remove('hidden');
+}
+window.hideAnnouncement=()=>{$('#announceBar').classList.add('hidden')};
+$('#announceTrack').addEventListener('animationiteration',()=>{
+  announceCount++;
+  if(announceCount>=4)$('#announceBar').classList.add('hidden');
+});
 function authErrText(e){
   const m=String((e&&e.message)||'');
   if(m.includes('phone already registered'))return 'ဒီဖုန်းနံပါတ်နဲ့ အကောင့်ရှိပြီးသား — Login ဝင်ပါ';
