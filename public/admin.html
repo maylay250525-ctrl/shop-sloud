@@ -25,7 +25,7 @@ th,td{border-bottom:1px solid var(--line);padding:7px 5px;text-align:left;vertic
 .badge.pending{background:#fff3cd;color:#7a5b00}.badge.approved,.badge.delivered{background:#d4edda;color:#155724}
 .badge.rejected,.badge.cancelled{background:#f8d7da;color:#721c24}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.hidden{display:none}
+.hidden{display:none!important}
 .notice{background:#fff3cd;color:#7a5b00;border-radius:8px;padding:10px;margin:8px 0}
 .muted{color:var(--muted);font-size:13px}
 a{color:var(--accent)}
@@ -104,7 +104,7 @@ async function loadAdmin(){
       c.innerHTML=`<div class="card"><table><tr><th>ID</th><th>Sender</th><th>Amount</th><th>Txn</th><th>Status</th><th></th></tr>${list.map(x=>`<tr><td>${x.id}</td><td>${esc(x.senderName)}<br><span class="muted">${esc(x.senderPhone)}</span></td><td>${fmt(x.amount)}<br><span class="muted">${x.method}</span></td><td>${esc(x.transferId)}</td><td><span class="badge ${x.status}">${x.status}</span></td><td>${x.status==='pending'?`<button class="primary" onclick="topupAct('${x.id}','approve')">Approve</button> <button class="warn" onclick="topupAct('${x.id}','reject')">Reject</button>`:''}</td></tr>`).join('')}</table></div>`;
     }else if(adminTab==='users'){
       const list=await aapi('/api/admin/users');
-      c.innerHTML=`<div class="card"><table><tr><th>Name</th><th>Phone</th><th>Joined</th><th>Reset password</th></tr>${list.map(u=>`<tr><td>${esc(u.name)}</td><td>${esc(u.phone)}</td><td class="muted">${(u.createdAt||'').slice(0,10)}</td><td><input type="text" id="rp-${esc(u.phone)}" placeholder="Password အသစ်" style="width:130px;display:inline-block"> <button onclick="resetUserPass('${esc(u.phone)}')">Reset</button></td></tr>`).join('')||'<tr><td colspan="4">—</td></tr>'}</table><p class="muted">Password မေ့သွားတဲ့ ဝယ်သူကို ဒီကနေ password အသစ် ပေးလို့ရတယ် — ပေးပြီးရင် ဝယ်သူက Profile မှာ သူ့ဘာသာ ပြန်ချိန်းနိုင်တယ်။</p></div>`;
+      c.innerHTML=`<div class="card"><table><tr><th>Name</th><th>Phone</th><th>Joined</th><th>Reset password</th><th></th></tr>${list.map(u=>`<tr><td>${esc(u.name)}</td><td>${esc(u.phone)}</td><td class="muted">${(u.createdAt||'').slice(0,10)}</td><td><input type="text" id="rp-${esc(u.phone)}" placeholder="Password အသစ်" style="width:130px;display:inline-block"> <button onclick="resetUserPass('${esc(u.phone)}')">Reset</button></td><td><button onclick="delUser('${esc(u.phone)}')">✕</button></td></tr>`).join('')||'<tr><td colspan="5">—</td></tr>'}</table><p class="muted">Password မေ့သွားတဲ့ ဝယ်သူကို ဒီကနေ password အသစ် ပေးလို့ရတယ် — ပေးပြီးရင် ဝယ်သူက Profile မှာ သူ့ဘာသာ ပြန်ချိန်းနိုင်တယ်။</p></div>`;
     }else if(adminTab==='settings'){
       const s=await aapi('/api/admin/settings');
       c.innerHTML=`<div class="card"><h3>Recipient (KPay / WavePay)</h3><input id="sName" value="${esc(s.recipientName)}"><input id="sPhone" value="${esc(s.recipientPhone)}"><input id="sFree" type="number" value="${s.freeThreshold}"><button class="primary" onclick="saveSettings()">Save</button><div id="sMsg"></div></div>`+
@@ -125,6 +125,11 @@ window.resetUserPass=async phone=>{
   if(!v||v.length<4){alert('Password အသစ် အနည်းဆုံး ၄ လုံး ထည့်ပေးပါ');return}
   await aapi('/api/admin/users/'+encodeURIComponent(phone)+'/reset-password',{method:'POST',body:JSON.stringify({newPassword:v})});
   alert('Password အသစ် ပေးပြီးပြီ — '+phone+' ကို ပြောပေးပါ');
+};
+window.delUser=async phone=>{
+  if(!confirm(phone+' အကောင့်ကို ဖျက်မှာလား? (သူ့ရဲ့ အော်ဒါ / wallet မှတ်တမ်း ကျန်မယ်)'))return;
+  await aapi('/api/admin/users/'+encodeURIComponent(phone),{method:'DELETE'});
+  loadAdmin();
 };
 window.resetUserData=async()=>{if(!confirm('User data အားလုံး (အော်ဒါ၊ ငွေဖြည့်၊ wallet၊ အကောင့်) ဖျက်မှာလား?'))return;await aapi('/api/admin/reset-user-data',{method:'POST'});$('#resetMsg').textContent='ဖျက်ပြီးပြီ ✅'};
 </script>
