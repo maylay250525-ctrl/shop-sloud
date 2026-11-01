@@ -259,7 +259,7 @@ async function api(p,o={}){
 function showView(v){
   ['shop','cart','wallet','profile'].forEach(x=>$('#'+x+'View').classList.toggle('hidden',x!==v));
   document.querySelectorAll('#bottomNav button').forEach(b=>b.classList.toggle('active',b.dataset.view===v));
-  if(v==='wallet'&&typeof loadWallet==='function')loadWallet();
+  if(v==='wallet'&&typeof loadWallet==='function'){loadWallet();startWalletRefresh()}else if(typeof stopWalletRefresh==='function')stopWalletRefresh();
   if(v==='profile'&&typeof loadMyOrders==='function')loadMyOrders();
   if(v==='profile'&&typeof loadChatUnread==='function')loadChatUnread();
   window.scrollTo({top:0});
@@ -279,10 +279,33 @@ async function loadShop(){
 }
 // Silent auto-refresh: re-fetch products, zones and settings every 15s.
 // Only re-renders lists/prices/fees — never touches what the user is typing.
+// Typing guard: the 15s auto-refresh never runs while the user is typing
+// in any field (or has just typed). Right after typing stops, a refresh
+// is scheduled at once, so prices and amounts stay fresh.
+let shopLastInput=0, shopRefreshPending=false;
+document.addEventListener('input',e=>{
+  const t=e.target;
+  if(t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.tagName==='SELECT')){shopLastInput=Date.now();scheduleShopRefresh();}
+},true);
+document.addEventListener('focusout',e=>{
+  const t=e.target;
+  if(t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.tagName==='SELECT'))scheduleShopRefresh();
+},true);
+function shopTyping(){
+  const a=document.activeElement;
+  if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'||a.tagName==='SELECT'))return true;
+  return Date.now()-shopLastInput<2000;
+}
+function scheduleShopRefresh(){
+  if(shopRefreshPending)return;
+  shopRefreshPending=true;
+  setTimeout(()=>{shopRefreshPending=false;if(!shopTyping())refreshShop();else scheduleShopRefresh();},1500);
+}
 let refreshTimer=null;
 function startRefresh(){stopRefresh();refreshTimer=setInterval(refreshShop,15000)}
 function stopRefresh(){if(refreshTimer){clearInterval(refreshTimer);refreshTimer=null}}
 async function refreshShop(){
+  if(shopTyping())return;
   try{
     products=await api('/api/products');
     const dz=await api('/api/delivery-zones'); zones=dz.zones;
@@ -459,7 +482,7 @@ $('#tSubmit').addEventListener('click',async()=>{
 });
 async function loadWallet(){
   const ph=authUser?authUser.phone:'';
-  $('#wPhone').value=ph;
+  const wp=$('#wPhone');if(wp&&document.activeElement!==wp)wp.value=ph;
   if(!ph){$('#wBalance').innerHTML='<span class="muted">Login ဝင်မှ လက်ကျန် ပြမယ်</span>';$('#wLedger').innerHTML='';return}
   try{
     const w=await api('/api/wallet');
@@ -467,6 +490,20 @@ async function loadWallet(){
     $('#wLedger').innerHTML=w.ledger.slice().reverse().map(l=>`<div class="muted">${l.date.slice(0,10)} · ${l.type} ${fmt(l.amount)} ${l.transferId?esc(l.transferId):''} ${l.note?esc(l.note):''}</div>`).join('')||'<p class="muted">—</p>';
     loadMyTopups();
   }catch(e){$('#wBalance').innerHTML=`<div class="notice">❌ ${esc(e.message)}</div>`}
+}
+// Wallet balance + ledger, every 1s while the Wallet tab is open.
+// Updates display only — never touches any input the user is typing in.
+let walletTimer=null;
+function startWalletRefresh(){stopWalletRefresh();walletTimer=setInterval(refreshWalletBalance,1000)}
+function stopWalletRefresh(){if(walletTimer){clearInterval(walletTimer);walletTimer=null}}
+async function refreshWalletBalance(){
+  if($('#walletView').classList.contains('hidden'))return;
+  try{
+    const w=await api('/api/wallet');
+    $('#wBalance').innerHTML=`<b>Balance: ${fmt(w.balance)}</b>`;
+    $('#wLedger').innerHTML=w.ledger.slice().reverse().map(l=>`<div class="muted">${l.date.slice(0,10)} · ${l.type} ${fmt(l.amount)} ${l.transferId?esc(l.transferId):''} ${l.note?esc(l.note):''}</div>`).join('')||'<p class="muted">—</p>';
+    loadMyTopups();
+  }catch(e){}
 }
 async function loadMyTopups(){
   try{
