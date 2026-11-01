@@ -299,6 +299,128 @@ app.post('/api/chat', requireAuth, ah(async (req, res) => {
 }));
 
 // ---------------------------------------------------------------------------
+// Voice calls (WebRTC, peer-to-peer audio — no recording, no storage).
+// The server only passes connection info ("signaling") between the customer
+// and the admin; the audio itself travels directly phone-to-phone and is
+// never saved. Signaling rides on the same 1s polling the chat already
+// uses, so no new packages or connections are needed. Calls live only in
+// memory: while one call is ringing/active the admin is "busy" — a second
+// caller gets {busy:true} (option 1) and is told to leave a message.
+// ---------------------------------------------------------------------------
+const calls = new Map(); // id -> {id, phone, name, status, offer, answer, candCustomer[], candAdmin[], createdAt}
+const CALL_RING_SECS = 45;   // unanswered ringing call becomes 'missed'
+const CALL_KEEP_SECS = 300;  // terminal calls kept this long for polling
+function callPublic(c, forAdmin) {
+  return {
+    id: c.id, phone: c.phone, name: c.name, status: c.status,
+    offer: c.offer || null, answer: c.answer || null,
+    candidates: forAdmin ? c.candCustomer : c.candAdmin,
+    createdAt: c.createdAt,
+  };
+}
+function adminBusy() {
+  for (const c of calls.values()) if (c.status === 'ringing' || c.status === 'active') return c;
+  return null;
+}
+function validSdp(v) { return v && typeof v === 'object' && typeof v.type === 'string' && typeof v.sdp === 'string' ? v : null; }
+function validCand(v) { return v && typeof v === 'object' && typeof v.candidate === 'string' ? v : null; }
+
+// Customer starts a call to the admin (sends their WebRTC offer).
+app.post('/api/call', requireAuth, ah(async (req, res) => {
+  const offer = validSdp((req.body || {}).offer);
+  if (!offer) return res.status(400).json({ error: 'offer required' });
+  if (adminBusy()) return res.json({ busy: true });
+  const id = 'c' + Date.now().toString(36) + Math.random().toString(16).slice(2, 6);
+  const user = await store.getUserByPhone(req.user.phone);
+  calls.set(id, { id, phone: req.user.phone, name: (user && user.name) || req.user.phone, status: 'ringing', offer, answer: null, candCustomer: [], candAdmin: [], createdAt: Date.now(), lastSeen: Date.now() });
+  res.status(201).json({ id, status: 'ringing' });
+}));
+
+// Customer polls their call: status + the admin's answer + admin ICE candidates.
+app.get('/api/call/:id', requireAuth, ah(async (req, res) => {
+  const c = calls.get(req.params.id);
+  if (!c || c.phone !== req.user.phone) return res.status(404).json({ error: 'not found' });
+  c.lastSeen = Date.now();
+  res.json(callPublic(c, false));
+}));
+
+// Customer adds an ICE candidate for the admin to pick up.
+app.post('/api/call/:id/candidate', requireAuth, ah(async (req, res) => {
+  const c = calls.get(req.params.id);
+  const cand = validCand((req.body || {}).candidate);
+  if (!c || c.phone !== req.user.phone || !cand) return res.status(404).json({ error: 'not found' });
+  c.candCustomer.push(cand);
+  res.json({ ok: true });
+}));
+
+// Customer ends (or cancels) their call.
+app.post('/api/call/:id/end', requireAuth, ah(async (req, res) => {
+  const c = calls.get(req.params.id);
+  if (!c || c.phone !== req.user.phone) return res.status(404).json({ error: 'not found' });
+  c.status = 'ended';
+  res.json({ ok: true });
+}));
+
+// Admin: calls currently ringing for the admin.
+app.get('/api/admin/calls/incoming', requireAdmin, ah(async (req, res) => {
+  res.json([...calls.values()].filter(c => c.status === 'ringing')
+    .map(c => ({ id: c.id, phone: c.phone, name: c.name, offer: c.offer, createdAt: c.createdAt })));
+}));
+
+// Admin: one call (status + the customer's ICE candidates).
+app.get('/api/admin/calls/:id', requireAdmin, ah(async (req, res) => {
+  const c = calls.get(req.params.id);
+  if (!c) return res.status(404).json({ error: 'not found' });
+  c.lastSeen = Date.now();
+  res.json(callPublic(c, true));
+}));
+
+// Admin accepts a ringing call (sends their WebRTC answer).
+app.post('/api/admin/calls/:id/answer', requireAdmin, ah(async (req, res) => {
+  const c = calls.get(req.params.id);
+  const answer = validSdp((req.body || {}).answer);
+  if (!c || c.status !== 'ringing' || !answer) return res.status(404).json({ error: 'not found' });
+  c.answer = answer; c.status = 'active';
+  res.json({ ok: true });
+}));
+
+// Admin declines a ringing call.
+app.post('/api/admin/calls/:id/decline', requireAdmin, ah(async (req, res) => {
+  const c = calls.get(req.params.id);
+  if (!c || c.status !== 'ringing') return res.status(404).json({ error: 'not found' });
+  c.status = 'declined';
+  res.json({ ok: true });
+}));
+
+// Admin adds an ICE candidate / ends a call.
+app.post('/api/admin/calls/:id/candidate', requireAdmin, ah(async (req, res) => {
+  const c = calls.get(req.params.id);
+  const cand = validCand((req.body || {}).candidate);
+  if (!c || !cand) return res.status(404).json({ error: 'not found' });
+  c.candAdmin.push(cand);
+  res.json({ ok: true });
+}));
+app.post('/api/admin/calls/:id/end', requireAdmin, ah(async (req, res) => {
+  const c = calls.get(req.params.id);
+  if (!c) return res.status(404).json({ error: 'not found' });
+  c.status = 'ended';
+  res.json({ ok: true });
+}));
+
+// Housekeeping: ringing calls unanswered for CALL_RING_SECS become
+// 'missed'; an 'active' call neither side polls any more (a side closed
+// its page mid-call) is ended; terminal calls are dropped after
+// CALL_KEEP_SECS so a stale poll never sees them again.
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, c] of calls) {
+    if (c.status === 'ringing' && now - c.createdAt > CALL_RING_SECS * 1000) c.status = 'missed';
+    if (c.status === 'active' && now - (c.lastSeen || c.createdAt) > 20000) c.status = 'ended';
+    if ((c.status === 'ended' || c.status === 'declined' || c.status === 'missed') && now - c.createdAt > CALL_KEEP_SECS * 1000) calls.delete(id);
+  }
+}, 15000);
+
+// ---------------------------------------------------------------------------
 // Admin API (passcode in x-admin-passcode header)
 // ---------------------------------------------------------------------------
 app.post('/api/admin/login', (req, res) => {
