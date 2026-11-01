@@ -5,30 +5,45 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Admin — ဈေးဆိုင်</title>
 <style>
-:root{--bg:#f7f3ec;--card:#fff;--text:#222;--muted:#777;--accent:#0d7a4f;--line:#e5ddd0}
-body.dark{--bg:#1a1a1a;--card:#262626;--text:#f0f0f0;--muted:#aaa;--line:#444}
+/* TailAdmin-style UI (light): clean white cards on a soft grey page,
+   green accent to match the shop, pill tabs and badges, soft shadows.
+   UI ONLY — no function, API or data logic is changed in this file. */
+:root{--bg:#f3f5f9;--card:#fff;--text:#1e293b;--muted:#64748b;--accent:#0d7a4f;--accent-soft:#dcf0e6;--line:#e6eaf1;--shadow:0 1px 3px rgba(15,23,42,.06),0 1px 2px rgba(15,23,42,.04);--danger:#dc2626;--amber-bg:#fef3c7;--amber-text:#92400e;--green-bg:#dcfce7;--green-text:#166534;--red-bg:#fee2e2;--red-text:#991b1b}
+body.dark{--bg:#0f172a;--card:#1e293b;--text:#f1f5f9;--muted:#94a3b8;--line:#334155;--accent-soft:#14532d;--shadow:0 1px 3px rgba(0,0,0,.4);--amber-bg:#78350f;--amber-text:#fde68a;--green-bg:#14532d;--green-text:#bbf7d0;--red-bg:#7f1d1d;--red-text:#fecaca}
 *{box-sizing:border-box}
-body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text)}
-header{position:sticky;top:0;background:var(--card);border-bottom:1px solid var(--line);padding:10px 14px;display:flex;gap:8px;align-items:center;z-index:10;flex-wrap:wrap}
-header h1{font-size:19px;margin:0;flex:1}
-button{cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:8px;padding:8px 12px;font-size:14px}
-button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
-button.warn{background:#b3261e;color:#fff;border-color:#b3261e}
-input,select,textarea{width:100%;padding:9px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--text);font-size:14px;margin:4px 0}
-main{max-width:960px;margin:0 auto;padding:14px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px}
-.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
-.tabs button.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}
+header{position:sticky;top:0;background:var(--card);border-bottom:1px solid var(--line);padding:12px 16px;display:flex;gap:10px;align-items:center;z-index:10;flex-wrap:wrap;box-shadow:var(--shadow)}
+header h1{font-size:20px;margin:0;flex:1;font-weight:800;letter-spacing:-.2px}
+button{cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:10px;padding:9px 14px;font-size:14px;font-weight:600;transition:background .15s,box-shadow .15s}
+button:hover{box-shadow:var(--shadow)}
+button.primary{background:var(--accent);color:#fff;border-color:var(--accent);box-shadow:0 2px 6px rgba(13,122,79,.25)}
+button.warn{background:var(--danger);color:#fff;border-color:var(--danger)}
+input,select,textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--text);font-size:14px;margin:4px 0}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+main{max-width:960px;margin:0 auto;padding:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;margin-bottom:16px;box-shadow:var(--shadow)}
+.card h3{margin:0 0 12px;font-size:17px;font-weight:700}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.tabs button{border-radius:999px;padding:9px 16px;background:var(--card)}
+.tabs button.active{background:var(--accent);color:#fff;border-color:var(--accent);box-shadow:0 2px 8px rgba(13,122,79,.3)}
 table{width:100%;border-collapse:collapse;font-size:14px}
-th,td{border-bottom:1px solid var(--line);padding:7px 5px;text-align:left;vertical-align:top}
-.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:12px;background:#eee;color:#333}
-.badge.pending{background:#fff3cd;color:#7a5b00}.badge.approved,.badge.delivered{background:#d4edda;color:#155724}
-.badge.rejected,.badge.cancelled{background:#f8d7da;color:#721c24}
+th{font-size:12px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);font-weight:700}
+th,td{border-bottom:1px solid var(--line);padding:10px 6px;text-align:left;vertical-align:middle}
+tr:last-child td{border-bottom:0}
+.badge{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700;background:#e2e8f0;color:#334155}
+.badge.pending{background:var(--amber-bg);color:var(--amber-text)}.badge.approved,.badge.delivered{background:var(--green-bg);color:var(--green-text)}
+.badge.rejected,.badge.cancelled{background:var(--red-bg);color:var(--red-text)}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .hidden{display:none!important}
-.notice{background:#fff3cd;color:#7a5b00;border-radius:8px;padding:10px;margin:8px 0}
+.notice{background:var(--amber-bg);color:var(--amber-text);border-radius:10px;padding:12px;margin:8px 0;font-weight:600}
 .muted{color:var(--muted);font-size:13px}
-a{color:var(--accent)}
+a{color:var(--accent);text-decoration:none;font-weight:600}
+/* TailAdmin-style stat cards (Overview) */
+.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:14px}
+@media(min-width:640px){.stats{grid-template-columns:repeat(3,1fr)}}
+.stat{background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:14px}
+.stat-label{display:block;font-size:13px;color:var(--muted);font-weight:600;margin-bottom:6px}
+.stat-num{font-size:24px;font-weight:800;letter-spacing:-.5px}
 </style>
 </head>
 <body>
@@ -154,7 +169,7 @@ async function loadAdmin(){
       const o=await aapi('/api/admin/overview');
       const chats=await aapi('/api/admin/chats');
       const unreadChats=chats.reduce((s,c)=>s+(c.unread||0),0);
-      setAdminContent(`<div class="card"><p>Products: <b>${o.products}</b> · Orders: <b>${o.orders}</b> · Pending orders: <b>${o.pendingOrders}</b> · Pending top-ups: <b>${o.pendingTopups}</b> · Revenue: <b>${fmt(o.revenue)}</b> · Unread chats: <b>${unreadChats}</b></p><h3>Low stock</h3>${o.lowStock.map(p=>`<div>${esc(p.name)} — ${p.stock}</div>`).join('')||'—'}</div>`);
+      setAdminContent(`<div class="card"><div class="stats"><div class="stat"><span class="stat-label">📦 Products</span><span class="stat-num">${o.products}</span></div><div class="stat"><span class="stat-label">🧾 Orders</span><span class="stat-num">${o.orders}</span></div><div class="stat"><span class="stat-label">⏳ Pending orders</span><span class="stat-num">${o.pendingOrders}</span></div><div class="stat"><span class="stat-label">💰 Pending top-ups</span><span class="stat-num">${o.pendingTopups}</span></div><div class="stat"><span class="stat-label">💵 Revenue</span><span class="stat-num">${fmt(o.revenue)}</span></div><div class="stat"><span class="stat-label">💬 Unread chats</span><span class="stat-num">${unreadChats}</span></div></div><h3>Low stock</h3>${o.lowStock.map(p=>`<div>${esc(p.name)} — ${p.stock}</div>`).join('')||'—'}</div>`);
     }else if(adminTab==='products'){
       await loadProducts();
       setAdminContent(`<div class="card"><h3>Add product</h3><input id="npName" placeholder="Name (Myanmar)"><input id="npPrice" type="number" placeholder="Price (Ks)"><input id="npStock" type="number" placeholder="Stock"><label class="muted">အမျိုးအစား (Category)</label><select id="npCat"><option>စားသောက်ကုန်</option><option>အသီးအနှံ</option><option>အသား/ငါး</option><option>အိမ်သုံးပစ္စည်း</option><option>အခြား</option></select><label class="muted">ပုံ (Photo)</label><input id="npImage" type="file" accept="image/*" onchange="newProductImagePicked(this)"><img id="npPreview" class="hidden" style="max-width:120px;border-radius:8px"><button class="primary" onclick="addProduct()">Add</button></div>`+
