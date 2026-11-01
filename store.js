@@ -201,6 +201,23 @@ class JsonStore {
   async listWallets() {
     return Object.entries(this.db.wallets).map(([phone, w]) => ({ phone, balance: w.balance, ledger: w.ledger }));
   }
+  // Full data export for backups: everything needed to restore the shop.
+  // Users include password hashes + salts (needed so restored accounts can
+  // still log in) — the backup file is admin-only, keep it private.
+  async exportAll() {
+    return {
+      products: this.db.products,
+      zones: this.db.deliveryZones,
+      settings: this.db.settings,
+      orders: this.db.orders,
+      topups: this.db.topups,
+      wallets: await this.listWallets(),
+      users: this.db.users,
+      customers: [],
+      chatMessages: this.db.chatMessages,
+      counters: this.db.counters,
+    };
+  }
   // ---- Customer <-> Admin chat ----
   // A message: {id, phone, sender ('customer'|'admin'), text,
   // readAdmin, readCustomer, date}. readAdmin = the admin has seen it
@@ -478,6 +495,22 @@ class PgStore {
   async listWallets() {
     const { rows } = await this.pool.query('SELECT * FROM wallet_entries ORDER BY phone');
     return rows.map(r => ({ phone: r.phone, balance: r.balance, ledger: r.ledger }));
+  }
+  // Full data export for backups (see JsonStore.exportAll).
+  async exportAll() {
+    const [products, zones, settings, orders, topups, wallets, users, customers, chats, counters] = await Promise.all([
+      this.pool.query('SELECT * FROM products ORDER BY id').then(r => r.rows.map(productFromRow)),
+      this.getZones(),
+      this.getSettings(),
+      this.listOrders(),
+      this.listTopups(),
+      this.listWallets(),
+      this.pool.query('SELECT * FROM users ORDER BY created_at').then(r => r.rows.map(userFromRow)),
+      this.pool.query('SELECT phone, name, address, updated_at FROM customers ORDER BY phone').then(r => r.rows.map(c => ({ phone: c.phone, name: c.name, address: c.address, updatedAt: c.updated_at ? new Date(c.updated_at).toISOString() : null }))),
+      this.pool.query('SELECT * FROM chat_messages ORDER BY created_at ASC, id ASC').then(r => r.rows.map(chatMessageFromRow)),
+      this.pool.query('SELECT name, value FROM counters').then(r => Object.fromEntries(r.rows.map(c => [c.name, c.value]))),
+    ]);
+    return { products, zones, settings, orders, topups, wallets, users, customers, chatMessages: chats, counters };
   }
   // ---- Customer <-> Admin chat ----
   async createChatMessage(m) {
