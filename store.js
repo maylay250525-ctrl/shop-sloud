@@ -146,8 +146,26 @@ class JsonStore {
     this._persist();
     return t;
   }
+  // Deletes the top-up record only. It does NOT reverse a wallet credit:
+  // an approved top-up's money lives in the wallet row, so delete that
+  // wallet too when cleaning up test data (see deleteWallet).
+  async deleteTopup(id) {
+    const i = this.db.topups.findIndex(x => x.id === id);
+    if (i < 0) return false;
+    this.db.topups.splice(i, 1);
+    this._persist();
+    return true;
+  }
   async getWallet(phone) { return this.db.wallets[phone] || { balance: 0, ledger: [] }; }
   async saveWallet(phone, wallet) { this.db.wallets[phone] = wallet; this._persist(); return wallet; }
+  // Deletes the whole wallet row (balance + ledger). Admin-only cleanup
+  // for test wallets / wallets of deleted accounts.
+  async deleteWallet(phone) {
+    if (!(phone in this.db.wallets)) return false;
+    delete this.db.wallets[phone];
+    this._persist();
+    return true;
+  }
   async getUserByPhone(phone) { return this.db.users.find(u => u.phone === phone) || null; }
   async createUser(u) { this.db.users.push(u); this._persist(); return u; }
   async listUsers() { return this.db.users.map(u => ({ id: u.id, name: u.name, phone: u.phone, createdAt: u.createdAt })); }
@@ -435,6 +453,11 @@ class PgStore {
     await this.pool.query('UPDATE topup_requests SET status=$2 WHERE id=$1', [id, next.status]);
     return next;
   }
+  // Deletes the top-up record only (see JsonStore.deleteTopup note).
+  async deleteTopup(id) {
+    const { rowCount } = await this.pool.query('DELETE FROM topup_requests WHERE id = $1', [id]);
+    return rowCount > 0;
+  }
   async getWallet(phone) {
     const { rows } = await this.pool.query('SELECT * FROM wallet_entries WHERE phone = $1', [phone]);
     if (!rows.length) return { balance: 0, ledger: [] };
@@ -446,6 +469,11 @@ class PgStore {
        ON CONFLICT (phone) DO UPDATE SET balance=EXCLUDED.balance, ledger=EXCLUDED.ledger`,
       [phone, wallet.balance, JSON.stringify(wallet.ledger)]);
     return wallet;
+  }
+  // Deletes the whole wallet row (balance + ledger).
+  async deleteWallet(phone) {
+    const { rowCount } = await this.pool.query('DELETE FROM wallet_entries WHERE phone = $1', [phone]);
+    return rowCount > 0;
   }
   async listWallets() {
     const { rows } = await this.pool.query('SELECT * FROM wallet_entries ORDER BY phone');
