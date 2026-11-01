@@ -51,7 +51,7 @@ const SEED_ZONES = [
   ['East Dagon', 4000], ['Shwepyitha', 4000],
 ].map(([name, fee]) => ({ name, fee }));
 
-const SEED_SETTINGS = { recipientName: 'LinLinAung', recipientPhone: '09680237595', freeThreshold: 30000, otherTownshipFee: 4000, announcement: '' };
+const SEED_SETTINGS = { recipientName: 'LinLinAung', recipientPhone: '09680237595', freeThreshold: 30000, otherTownshipFee: 4000, announcement: '', aiEnabled: true };
 
 function seedDb() {
   return {
@@ -228,7 +228,8 @@ CREATE TABLE IF NOT EXISTS delivery_zones (
 );
 CREATE TABLE IF NOT EXISTS settings (
   id INTEGER PRIMARY KEY, recipient_name TEXT NOT NULL, recipient_phone TEXT NOT NULL,
-  free_threshold INTEGER NOT NULL, other_township_fee INTEGER NOT NULL, announcement TEXT
+  free_threshold INTEGER NOT NULL, other_township_fee INTEGER NOT NULL, announcement TEXT,
+  ai_enabled BOOLEAN DEFAULT TRUE
 );
 CREATE TABLE IF NOT EXISTS orders (
   id TEXT PRIMARY KEY, customer_name TEXT NOT NULL, phone TEXT NOT NULL,
@@ -303,6 +304,8 @@ class PgStore {
     await this.pool.query('ALTER TABLE products ADD COLUMN IF NOT EXISTS image TEXT');
     // Migration: shop announcement (added 2026-11-01).
     await this.pool.query('ALTER TABLE settings ADD COLUMN IF NOT EXISTS announcement TEXT');
+    // Migration: AI reply suggestions on/off (added 2026-11-02).
+    await this.pool.query('ALTER TABLE settings ADD COLUMN IF NOT EXISTS ai_enabled BOOLEAN DEFAULT TRUE');
     // Seed once, when tables are empty.
     const { rows } = await this.pool.query('SELECT COUNT(*)::int AS n FROM products');
     if (rows[0].n === 0) {
@@ -362,14 +365,14 @@ class PgStore {
   async getSettings() {
     const { rows } = await this.pool.query('SELECT * FROM settings WHERE id = 1');
     const r = rows[0];
-    return { recipientName: r.recipient_name, recipientPhone: r.recipient_phone, freeThreshold: r.free_threshold, otherTownshipFee: r.other_township_fee, announcement: r.announcement || '' };
+    return { recipientName: r.recipient_name, recipientPhone: r.recipient_phone, freeThreshold: r.free_threshold, otherTownshipFee: r.other_township_fee, announcement: r.announcement || '', aiEnabled: r.ai_enabled !== false };
   }
   async updateSettings(fields) {
     const cur = await this.getSettings();
     const next = { ...cur, ...fields };
     await this.pool.query(
-      'UPDATE settings SET recipient_name=$1, recipient_phone=$2, free_threshold=$3, other_township_fee=$4, announcement=$5 WHERE id=1',
-      [next.recipientName, next.recipientPhone, next.freeThreshold, next.otherTownshipFee, next.announcement || '']);
+      'UPDATE settings SET recipient_name=$1, recipient_phone=$2, free_threshold=$3, other_township_fee=$4, announcement=$5, ai_enabled=$6 WHERE id=1',
+      [next.recipientName, next.recipientPhone, next.freeThreshold, next.otherTownshipFee, next.announcement || '', next.aiEnabled !== false]);
     return next;
   }
   async listOrders() {
