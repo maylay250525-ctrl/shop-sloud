@@ -650,6 +650,14 @@ app.delete('/api/admin/wallets/:phone', requireAdmin, ah(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// Admin downloads a full backup (JSON) of all shop data: products, zones,
+// settings, orders, top-ups, wallets, users, customers, chats, counters.
+// Admin-only. The file contains password hashes — keep it private.
+app.get('/api/admin/backup', requireAdmin, ah(async (req, res) => {
+  const data = await store.exportAll();
+  res.json({ backup: 'shop-cloud', version: 1, exportedAt: new Date().toISOString(), ...data });
+}));
+
 // ---------------------------------------------------------------------------
 // Admin AI reply suggestions (Gemini free API, admin-only).
 // The AI never talks to customers directly: the admin taps "AI အကြံပြုချက်"
