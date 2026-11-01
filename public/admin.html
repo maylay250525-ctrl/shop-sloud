@@ -55,13 +55,14 @@ a{color:var(--accent)}
 <script>
 const $=s=>document.querySelector(s);
 let adminPass='', adminTab='overview', adminTimer=null, products=[];
+let chatPhone=null, adminChatSig=''; // admin chat: open conversation + last rendered signature
 function fmt(n){return Number(n).toLocaleString()+' Ks'}
 function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 async function api(p,o={}){const r=await fetch(p,{...o,headers:{'Content-Type':'application/json',...(o.headers||{})}});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||r.status);return j}
 async function loadProducts(){products=await aapi('/api/admin/products')}
 
 $('#themeBtn').addEventListener('click',()=>document.body.classList.toggle('dark'));
-const ADMIN_TABS=['overview','products','orders','delivery','wallet','topups','users','settings'];
+const ADMIN_TABS=['overview','products','orders','delivery','wallet','topups','chats','users','settings'];
 $('#adminLogin').addEventListener('click',async()=>{
   try{await api('/api/admin/login',{method:'POST',body:JSON.stringify({passcode:$('#adminPass').value})});adminPass=$('#adminPass').value;$('#adminGate').classList.add('hidden');$('#adminMain').classList.remove('hidden');renderAdminTabs();loadAdmin();adminTimer=setInterval(loadAdmin,10000);}
   catch(e){$('#adminLoginMsg').textContent='Passcode မှားနေတယ် / Wrong passcode'}
@@ -85,7 +86,9 @@ async function loadAdmin(){
   try{
     if(adminTab==='overview'){
       const o=await aapi('/api/admin/overview');
-      c.innerHTML=`<div class="card"><p>Products: <b>${o.products}</b> · Orders: <b>${o.orders}</b> · Pending orders: <b>${o.pendingOrders}</b> · Pending top-ups: <b>${o.pendingTopups}</b> · Revenue: <b>${fmt(o.revenue)}</b></p><h3>Low stock</h3>${o.lowStock.map(p=>`<div>${esc(p.name)} — ${p.stock}</div>`).join('')||'—'}</div>`;
+      const chats=await aapi('/api/admin/chats');
+      const unreadChats=chats.reduce((s,c)=>s+(c.unread||0),0);
+      c.innerHTML=`<div class="card"><p>Products: <b>${o.products}</b> · Orders: <b>${o.orders}</b> · Pending orders: <b>${o.pendingOrders}</b> · Pending top-ups: <b>${o.pendingTopups}</b> · Revenue: <b>${fmt(o.revenue)}</b> · Unread chats: <b>${unreadChats}</b></p><h3>Low stock</h3>${o.lowStock.map(p=>`<div>${esc(p.name)} — ${p.stock}</div>`).join('')||'—'}</div>`;
     }else if(adminTab==='products'){
       await loadProducts();
       c.innerHTML=`<div class="card"><h3>Add product</h3><input id="npName" placeholder="Name (Myanmar)"><input id="npPrice" type="number" placeholder="Price (Ks)"><input id="npStock" type="number" placeholder="Stock"><label class="muted">ပုံ (Photo)</label><input id="npImage" type="file" accept="image/*" onchange="newProductImagePicked(this)"><img id="npPreview" class="hidden" style="max-width:120px;border-radius:8px"><button class="primary" onclick="addProduct()">Add</button></div>`+
@@ -111,6 +114,27 @@ async function loadAdmin(){
     }else if(adminTab==='topups'){
       const list=await aapi('/api/admin/topups');
       c.innerHTML=`<div class="card"><table><tr><th>ID</th><th>Sender</th><th>Amount</th><th>Txn</th><th>Status</th><th></th></tr>${list.map(x=>`<tr><td>${x.id}</td><td>${esc(x.senderName)}<br><span class="muted">${esc(x.senderPhone)}</span></td><td>${fmt(x.amount)}<br><span class="muted">${x.method}</span></td><td>${esc(x.transferId)}</td><td><span class="badge ${x.status}">${x.status}</span></td><td>${x.status==='pending'?`<button class="primary" onclick="topupAct('${x.id}','approve')">Approve</button> <button class="warn" onclick="topupAct('${x.id}','reject')">Reject</button>`:''}</td></tr>`).join('')}</table></div>`;
+    }else if(adminTab==='chats'){
+      // Customer chats: list of conversations, then one open conversation.
+      // The 10s auto-refresh re-renders only when the last message changed,
+      // and isEditing() already skips a cycle while the reply box has focus.
+      const list=await aapi('/api/admin/chats');
+      const unread=list.reduce((s,x)=>s+(x.unread||0),0);
+      const tabBtn=[...document.querySelectorAll('#adminTabs button')].find(b=>b.textContent.startsWith('Chats'));
+      if(tabBtn)tabBtn.textContent=unread>0?`Chats (${unread})`:'Chats';
+      if(!chatPhone){
+        c.innerHTML=`<div class="card"><h3>💬 ဝယ်သူတွေရဲ့ စာများ</h3>${list.map(x=>`<div style="border-bottom:1px solid #eee;padding:10px 0;cursor:pointer" onclick="openChat('${esc(x.phone)}')"><b>${esc(x.name||x.phone)}</b> · <span class="muted">${esc(x.phone)}</span>${x.unread?` <span class="badge" style="background:#e11d48;color:#fff">${x.unread} အသစ်</span>`:''}<br><span class="muted">${x.lastSender==='admin'?'Admin: ':''}${esc(x.lastText||'')}</span><br><span class="muted">${(x.lastDate||'').slice(0,16).replace('T',' ')}</span></div>`).join('')||'—'}</div>`;
+      }else{
+        const msgs=await aapi('/api/admin/chats/'+encodeURIComponent(chatPhone));
+        const info=list.find(x=>x.phone===chatPhone);
+        const last=msgs.length?msgs[msgs.length-1].id:'';
+        const sig=msgs.length+'|'+last;
+        if(sig!==adminChatSig){
+          adminChatSig=sig;
+          c.innerHTML=`<div class="card"><button onclick="closeChat()">← ပြန်သွားမည်</button> <b>${esc(info?info.name||chatPhone:chatPhone)}</b> · <span class="muted">${esc(chatPhone)}</span><div id="adminChatMsgs" style="height:320px;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px;background:#0f172a;border-radius:12px;margin:10px 0">${msgs.map(m=>`<div style="max-width:80%;padding:9px 12px;border-radius:14px;font-size:14px;line-height:1.45;white-space:pre-wrap;word-break:break-word;color:#fff;${m.sender==='admin'?'align-self:flex-end;background:#2563eb;border-bottom-right-radius:4px':'align-self:flex-start;background:#334155;border-bottom-left-radius:4px'}">${esc(m.text)}<span style="display:block;font-size:11px;opacity:.7;margin-top:4px">${(m.date||'').slice(11,16)}</span></div>`).join('')||'<p class="muted" style="color:#9fb3d1">စာမရှိသေးဘူး</p>'}</div><div style="display:flex;gap:8px"><input id="adminChatText" placeholder="ပြန်ဖြေပါ…" maxlength="1000" style="flex:1" onkeydown="if(event.key==='Enter')sendAdminChat()"><button class="primary" onclick="sendAdminChat()">➤ ပို့မည်</button></div></div>`;
+          const box=$('#adminChatMsgs');if(box)box.scrollTop=box.scrollHeight;
+        }
+      }
     }else if(adminTab==='users'){
       const list=await aapi('/api/admin/users');
       c.innerHTML=`<div class="card"><table><tr><th>Name</th><th>Phone</th><th>Joined</th><th>Reset password</th><th></th></tr>${list.map(u=>`<tr><td>${esc(u.name)}</td><td>${esc(u.phone)}</td><td class="muted">${(u.createdAt||'').slice(0,10)}</td><td><input type="text" id="rp-${esc(u.phone)}" placeholder="Password အသစ်" style="width:130px;display:inline-block"> <button onclick="resetUserPass('${esc(u.phone)}')">Reset</button></td><td><button onclick="delUser('${esc(u.phone)}')">✕</button></td></tr>`).join('')||'<tr><td colspan="5">—</td></tr>'}</table><p class="muted">Password မေ့သွားတဲ့ ဝယ်သူကို ဒီကနေ password အသစ် ပေးလို့ရတယ် — ပေးပြီးရင် ဝယ်သူက Profile မှာ သူ့ဘာသာ ပြန်ချိန်းနိုင်တယ်။</p></div>`;
@@ -145,6 +169,14 @@ window.delProduct=async id=>{if(confirm('Delete?')){await aapi('/api/admin/produ
 window.setOrderStatus=async(id,s)=>{await aapi('/api/admin/orders/'+id,{method:'PATCH',body:JSON.stringify({status:s})});loadAdmin()};
 window.editFee=async(name,v)=>{await aapi('/api/admin/delivery/'+encodeURIComponent(name),{method:'PATCH',body:JSON.stringify({fee:Number(v)})})};
 window.topupAct=async(id,act)=>{await aapi(`/api/admin/topups/${id}/${act}`,{method:'POST'});loadAdmin()};
+window.openChat=phone=>{chatPhone=phone;adminChatSig='';loadAdmin()};
+window.closeChat=()=>{chatPhone=null;adminChatSig='';loadAdmin()};
+window.sendAdminChat=async()=>{
+  const inp=$('#adminChatText');const text=inp?inp.value.trim():'';
+  if(!text||!chatPhone)return;
+  await aapi('/api/admin/chats/'+encodeURIComponent(chatPhone)+'/send',{method:'POST',body:JSON.stringify({text})});
+  adminChatSig='';loadAdmin();
+};
 window.saveSettings=async()=>{await aapi('/api/admin/settings',{method:'PATCH',body:JSON.stringify({recipientName:$('#sName').value,recipientPhone:$('#sPhone').value,freeThreshold:Number($('#sFree').value),otherTownshipFee:Number($('#sOther').value),announcement:$('#sAnnounce').value})});$('#sMsg').textContent='Saved ✅'};
 window.resetUserPass=async phone=>{
   const el=document.getElementById('rp-'+phone);

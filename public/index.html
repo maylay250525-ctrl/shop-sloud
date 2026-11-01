@@ -31,6 +31,19 @@ main{max-width:960px;margin:0 auto;padding:14px}
 @keyframes announceScroll{from{transform:translateX(0)}to{transform:translateX(-100%)}}
 .ann-ic{flex:0 0 auto}
 .ann-x{flex:0 0 auto;background:none;border:0;color:#666;font-size:14px;padding:2px 6px;cursor:pointer}
+/* Chat with Admin — layout like the picture: dark navy panel, blue bubbles
+   for me (right), dark bubbles for Admin (left), input + round send button */
+.chat-box{border:1px solid var(--line);border-radius:16px;overflow:hidden;margin-top:12px}
+.chat-head{background:#16213e;color:#fff;padding:12px 14px;font-weight:700;display:flex;gap:8px;align-items:center}
+.chat-head .dot{width:9px;height:9px;border-radius:50%;background:#22c55e;display:inline-block}
+.chat-msgs{height:320px;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px;background:#0f172a}
+.chat-msg{max-width:80%;padding:9px 12px;border-radius:14px;font-size:14px;line-height:1.45;white-space:pre-wrap;word-break:break-word;color:#fff}
+.chat-msg.me{align-self:flex-end;background:#2563eb;border-bottom-right-radius:4px}
+.chat-msg.them{align-self:flex-start;background:#334155;border-bottom-left-radius:4px}
+.chat-msg .tm{display:block;font-size:11px;opacity:.7;margin-top:4px}
+.chat-input{display:flex;gap:8px;padding:10px;background:#16213e}
+.chat-input input{flex:1;margin:0;border-radius:999px;border:1px solid #334155;background:#0f172a;color:#fff}
+.chat-input button{border-radius:50%;width:44px;height:44px;padding:0;font-size:18px;flex:0 0 auto}
 .prod h3{margin:0;font-size:15px;flex:1}
 .price{color:var(--accent);font-weight:800;font-size:16px;margin:4px 0}
 .muted{color:var(--muted);font-size:13px}
@@ -179,6 +192,17 @@ body.dark #bottomNav button.active{background:#1d3a2c}
     </div>
 
     <div class="card">
+      <h2>💬 Admin နဲ့ စကားပြောရန်</h2>
+      <p class="muted">မေးစရာရှိရင် ဒီကနေ Admin ကို တိုက်ရိုက် စာပို့လို့ရတယ်</p>
+      <button class="primary" id="chatOpenBtn" style="width:100%">💬 admin နဲ့စကားပြောရန် <span id="chatBadge" class="badge hidden" style="background:#e11d48;color:#fff">0</span></button>
+      <div id="chatBox" class="chat-box hidden">
+        <div class="chat-head">🤖 Admin <span class="dot"></span><span style="font-weight:400;color:#9fb3d1;font-size:13px">အွန်လိုင်း</span><span style="flex:1"></span><button onclick="toggleChat(false)" style="background:none;border:0;color:#fff;font-size:16px;padding:2px 6px">✕</button></div>
+        <div id="chatMsgs" class="chat-msgs"></div>
+        <div class="chat-input"><input id="chatText" placeholder="စာရိုက်ပါ…" maxlength="1000"><button class="primary" id="chatSend">➤</button></div>
+      </div>
+    </div>
+
+    <div class="card">
       <h2 data-t="orders">ကျွန်ုပ်၏ အော်ဒါများ</h2>
       <div id="myOrders"></div>
     </div>
@@ -221,6 +245,7 @@ function showView(v){
   document.querySelectorAll('#bottomNav button').forEach(b=>b.classList.toggle('active',b.dataset.view===v));
   if(v==='wallet'&&typeof loadWallet==='function')loadWallet();
   if(v==='profile'&&typeof loadMyOrders==='function')loadMyOrders();
+  if(v==='profile'&&typeof loadChatUnread==='function')loadChatUnread();
   window.scrollTo({top:0});
 }
 document.querySelectorAll('#bottomNav button').forEach(b=>b.addEventListener('click',()=>showView(b.dataset.view)));
@@ -251,6 +276,7 @@ async function refreshShop(){
     if(tw)$('#coTownship').value=tw;
     renderProducts(); renderFavs(); showRecipient(); updateFee(); showAnnouncement();
     if(!$('#walletView').classList.contains('hidden')&&typeof loadWallet==='function')loadWallet();
+    if(!$('#profileView').classList.contains('hidden')&&typeof loadChatUnread==='function')loadChatUnread();
     const now=new Date();
     $('#lastUpdated').textContent='✓ '+now.getHours()+':'+String(now.getMinutes()).padStart(2,'0')+':'+String(now.getSeconds()).padStart(2,'0');
   }catch(e){}
@@ -336,6 +362,7 @@ function saveSession(token,user){
 function logout(){
   authToken='';authUser=null;localStorage.removeItem('shopToken');
   cart={};renderCart();stopRefresh();
+  if(typeof toggleChat==='function'&&chatOpen)toggleChat(false);
   $('#announceBar').classList.add('hidden');
   showAuth('login');
 }
@@ -446,6 +473,50 @@ async function loadMyOrders(){
     const list=await api('/api/orders');
     $('#myOrders').innerHTML=list.map(o=>`<div class="card" style="margin:8px 0"><b>${o.id}</b> · ${fmt(o.total)} · <span class="badge ${o.status}">${o.status}</span><br><span class="muted">${o.items.map(i=>esc(i.name)+' ×'+i.qty).join(', ')} · ${esc(o.township)}</span></div>`).join('')||'<p class="muted">—</p>';
   }catch(e){}
+}
+
+// ---- Chat with Admin (Profile) ----
+// Dark panel like the picture: blue bubbles for me (right), dark bubbles
+// for Admin (left), input + round send button at the bottom. Polls every
+// 8s while open; the 15s shop refresh only updates the unread badge.
+let chatOpen=false, chatTimer=null, chatLastId='';
+function chatTime(d){const x=new Date(d||Date.now());return x.getHours()+':'+String(x.getMinutes()).padStart(2,'0')}
+function renderChatMsgs(list){
+  $('#chatMsgs').innerHTML=list.map(m=>`<div class="chat-msg ${m.sender==='customer'?'me':'them'}">${esc(m.text)}<span class="tm">${chatTime(m.date)}</span></div>`).join('')||'<p class="muted" style="color:#9fb3d1">မေးစရာ ရှိရင် ဒီကနေ စာပို့လိုက်ပါ — Admin က ပြန်ဖြေပေးမယ်။</p>';
+  $('#chatMsgs').scrollTop=$('#chatMsgs').scrollHeight;
+}
+async function loadChat(){
+  try{
+    const r=await api('/api/chat');
+    const last=r.messages.length?r.messages[r.messages.length-1].id:'';
+    if(last!==chatLastId||$('#chatMsgs').children.length!==r.messages.length){chatLastId=last;renderChatMsgs(r.messages)}
+    $('#chatBadge').classList.add('hidden');
+  }catch(e){}
+}
+async function loadChatUnread(){
+  try{
+    const r=await api('/api/chat/unread');
+    const b=$('#chatBadge');
+    if(r.unread>0){b.textContent=r.unread;b.classList.remove('hidden')}else b.classList.add('hidden');
+  }catch(e){}
+}
+window.toggleChat=open=>{
+  chatOpen=open;
+  $('#chatBox').classList.toggle('hidden',!open);
+  $('#chatOpenBtn').innerHTML=open?'💬 စာပို့ပြီးပြီ — ပိတ်မည်':'💬 admin နဲ့စကားပြောရန် <span id="chatBadge" class="badge hidden" style="background:#e11d48;color:#fff">0</span>';
+  if(open){chatLastId='';loadChat();chatTimer=setInterval(loadChat,8000)}
+  else if(chatTimer){clearInterval(chatTimer);chatTimer=null}
+};
+$('#chatOpenBtn').addEventListener('click',()=>toggleChat(!chatOpen));
+$('#chatSend').addEventListener('click',sendChatMsg);
+$('#chatText').addEventListener('keydown',e=>{if(e.key==='Enter')sendChatMsg()});
+async function sendChatMsg(){
+  const inp=$('#chatText'), text=inp.value.trim();
+  if(!text)return;
+  try{
+    await api('/api/chat',{method:'POST',body:JSON.stringify({text})});
+    inp.value='';loadChat();
+  }catch(e){alert(e.message)}
 }
 
 // ---- Profile ----
