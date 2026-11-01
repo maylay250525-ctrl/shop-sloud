@@ -151,7 +151,7 @@ async function loadAdmin(){
         const info=list.find(x=>x.phone===chatPhone);
         if(!document.querySelector('#adminChatMsgs')){
           adminChatSig='';
-          c.innerHTML=`<div class="card"><button onclick="closeChat()">← ပြန်သွားမည်</button> <b>${esc(info?info.name||chatPhone:chatPhone)}</b> · <span class="muted">${esc(chatPhone)}</span><div id="adminChatMsgs" style="height:320px;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px;background:#0f172a;border-radius:12px;margin:10px 0"></div><div style="display:flex;gap:8px"><input id="adminChatText" placeholder="ပြန်ဖြေပါ…" maxlength="1000" style="flex:1" onkeydown="if(event.key==='Enter')sendAdminChat()"><button class="primary" onclick="sendAdminChat()">➤ ပို့မည်</button></div></div>`;
+          c.innerHTML=`<div class="card"><button onclick="closeChat()">← ပြန်သွားမည်</button> <b>${esc(info?info.name||chatPhone:chatPhone)}</b> · <span class="muted">${esc(chatPhone)}</span><div id="adminChatMsgs" style="height:320px;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px;background:#0f172a;border-radius:12px;margin:10px 0"></div><div style="display:flex;gap:8px"><input id="adminChatText" placeholder="ပြန်ဖြေပါ…" maxlength="1000" style="flex:1" onkeydown="if(event.key==='Enter')sendAdminChat()"><button class="primary" onclick="sendAdminChat()">➤ ပို့မည်</button></div><div style="display:flex;gap:8px;margin-top:8px;align-items:center"><button id="aiSuggestBtn" onclick="suggestAiReply()">✨ AI အကြံပြုချက်</button><span id="aiSuggestMsg" class="muted"></span></div></div>`;
         }
         if(!adminChatTimer)adminChatTimer=setInterval(pollAdminChat,1000);
         await pollAdminChat();
@@ -161,7 +161,7 @@ async function loadAdmin(){
       c.innerHTML=`<div class="card"><table><tr><th>Name</th><th>Phone</th><th>Joined</th><th>Reset password</th><th></th></tr>${list.map(u=>`<tr><td>${esc(u.name)}</td><td>${esc(u.phone)}</td><td class="muted">${(u.createdAt||'').slice(0,10)}</td><td><input type="text" id="rp-${esc(u.phone)}" placeholder="Password အသစ်" style="width:130px;display:inline-block"> <button onclick="resetUserPass('${esc(u.phone)}')">Reset</button></td><td><button onclick="delUser('${esc(u.phone)}')">✕</button></td></tr>`).join('')||'<tr><td colspan="5">—</td></tr>'}</table><p class="muted">Password မေ့သွားတဲ့ ဝယ်သူကို ဒီကနေ password အသစ် ပေးလို့ရတယ် — ပေးပြီးရင် ဝယ်သူက Profile မှာ သူ့ဘာသာ ပြန်ချိန်းနိုင်တယ်။</p></div>`;
     }else if(adminTab==='settings'){
       const s=await aapi('/api/admin/settings');
-      c.innerHTML=`<div class="card"><h3>Recipient (KPay / WavePay)</h3><label class="muted">Admin နာမည်</label><input id="sName" value="${esc(s.recipientName)}"><label class="muted">Admin ဖုန်း</label><input id="sPhone" value="${esc(s.recipientPhone)}"><label class="muted">ပို့ခ အခမဲ့ ဖြစ်မည့် ပမာဏ (Ks) — အော်ဒါ ဒီပမာဏ ပြည့်ရင် ပို့ခ 0 Ks</label><input id="sFree" type="number" value="${s.freeThreshold}"><label class="muted">အခြားမြို့နယ် ပို့ခ (Ks)</label><input id="sOther" type="number" value="${s.otherTownshipFee}"><label class="muted">ကြေညာချက် — ဆိုင်အပေါ်ဆုံးမှာ ညာကနေ ဘယ်ကို ပြေးနေတဲ့ စာတန်း (ဗလာထားရင် မပေါ်ဘူး)</label><textarea id="sAnnounce" rows="2">${esc(s.announcement||'')}</textarea><button class="primary" onclick="saveSettings()">Save</button><div id="sMsg"></div></div>`+
+      c.innerHTML=`<div class="card"><h3>Recipient (KPay / WavePay)</h3><label class="muted">Admin နာမည်</label><input id="sName" value="${esc(s.recipientName)}"><label class="muted">Admin ဖုန်း</label><input id="sPhone" value="${esc(s.recipientPhone)}"><label class="muted">ပို့ခ အခမဲ့ ဖြစ်မည့် ပမာဏ (Ks) — အော်ဒါ ဒီပမာဏ ပြည့်ရင် ပို့ခ 0 Ks</label><input id="sFree" type="number" value="${s.freeThreshold}"><label class="muted">အခြားမြို့နယ် ပို့ခ (Ks)</label><input id="sOther" type="number" value="${s.otherTownshipFee}"><label class="muted">ကြေညာချက် — ဆိုင်အပေါ်ဆုံးမှာ ညာကနေ ဘယ်ကို ပြေးနေတဲ့ စာတန်း (ဗလာထားရင် မပေါ်ဘူး)</label><textarea id="sAnnounce" rows="2">${esc(s.announcement||'')}</textarea><label style="display:block;margin-top:8px"><input type="checkbox" id="sAi" ${s.aiEnabled===false?'':'checked'}> ✨ AI အကြံပြုချက် ဖွင့်မယ် (Chats မှာ Admin ကို အဖြေ စဉ်းစားပေးတာ)</label><button class="primary" onclick="saveSettings()">Save</button><div id="sMsg"></div></div>`+
       `<div class="card"><h3>⚠️ User data ဖျက်မယ်</h3><p class="muted">အော်ဒါ၊ ငွေဖြည့်၊ wallet၊ အကောင့်များ အားလုံး ဖျက်မယ်။ ပစ္စည်း၊ ပို့ခ၊ setting တွေ မပျက်ဘူး။</p><button class="warn" onclick="resetUserData()">ဖျက်မည်</button><div id="resetMsg"></div></div>`;
     }
   }catch(e){c.innerHTML=`<div class="notice">❌ ${esc(e.message)}</div>`}
@@ -215,6 +215,28 @@ window.sendAdminChat=async()=>{
   await aapi('/api/admin/chats/'+encodeURIComponent(chatPhone)+'/send',{method:'POST',body:JSON.stringify({text})});
   if(inp)inp.value='';
   adminChatSig='';pollAdminChat();
+};
+// AI reply suggestion (admin-only): asks the server for a draft reply to
+// this customer and puts it in the reply box — the admin reviews/edits it
+// before sending. The AI never sends anything to the customer itself.
+window.suggestAiReply=async()=>{
+  if(!chatPhone)return;
+  const btn=$('#aiSuggestBtn'),msg=$('#aiSuggestMsg');
+  if(btn)btn.disabled=true;
+  if(msg)msg.textContent='AI စဉ်းစားနေတယ်…';
+  try{
+    const r=await aapi('/api/admin/ai/suggest',{method:'POST',body:JSON.stringify({phone:chatPhone})});
+    if(r.text){
+      const inp=$('#adminChatText');
+      if(inp){inp.value=r.text;inp.focus()}
+      if(msg)msg.textContent=r.source==='rules'?'✓ ဆိုင်စာရင်းကနေ ဖြေထားတာ — ပြင်ပြီး ပို့လို့ရတယ်':'✓ AI အကြံပြုချက် — ပြင်ပြီး ပို့လို့ရတယ်';
+    }else if(r.error==='ai_disabled'){if(msg)msg.textContent='AI ပိတ်ထားတယ် (Settings မှာ ဖွင့်လို့ရတယ်)'}
+    else if(r.error==='ai_limit'){if(msg)msg.textContent='AI ဒီနေ့ အသုံးများသွားပြီ — ကိုယ်တိုင် ဖြေပေးပါ'}
+    else if(r.error==='ai_not_configured'){if(msg)msg.textContent='AI key မထည့်ရသေးဘူး'}
+    else if(r.error==='no_message'){if(msg)msg.textContent='ဝယ်သူက စာမပို့သေးဘူး'}
+    else{if(msg)msg.textContent='AI ခဏ အလုပ်မလုပ်ဘူး — ကိုယ်တိုင် ဖြေပေးပါ'}
+  }catch(e){if(msg)msg.textContent='AI ခဏ အလုပ်မလုပ်ဘူး — ကိုယ်တိုင် ဖြေပေးပါ'}
+  if(btn)btn.disabled=false;
 };
 
 // ---- Voice calls (admin side; WebRTC, peer-to-peer audio, no recording) ----
@@ -309,7 +331,7 @@ window.toggleAdminMute=()=>{
   adminStream.getAudioTracks().forEach(t=>t.enabled=!adminMuted);
   $('#adminCallMute').textContent=adminMuted?'🔇':'🔊';
 };
-window.saveSettings=async()=>{await aapi('/api/admin/settings',{method:'PATCH',body:JSON.stringify({recipientName:$('#sName').value,recipientPhone:$('#sPhone').value,freeThreshold:Number($('#sFree').value),otherTownshipFee:Number($('#sOther').value),announcement:$('#sAnnounce').value})});$('#sMsg').textContent='Saved ✅'};
+window.saveSettings=async()=>{await aapi('/api/admin/settings',{method:'PATCH',body:JSON.stringify({recipientName:$('#sName').value,recipientPhone:$('#sPhone').value,freeThreshold:Number($('#sFree').value),otherTownshipFee:Number($('#sOther').value),announcement:$('#sAnnounce').value,aiEnabled:$('#sAi').checked})});$('#sMsg').textContent='Saved ✅'};
 window.resetUserPass=async phone=>{
   const el=document.getElementById('rp-'+phone);
   const v=el?el.value.trim():'';
