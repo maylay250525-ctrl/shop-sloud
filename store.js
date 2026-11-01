@@ -62,6 +62,7 @@ function seedDb() {
     topups: [],
     wallets: {},
     users: [],
+    chatMessages: [],
     counters: { order: 0, topup: 0 },
   };
 }
@@ -79,6 +80,7 @@ class JsonStore {
       if (fs.existsSync(DB_PATH)) {
         const db = JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
         if (!Array.isArray(db.users)) db.users = []; // migrate old db.json files
+        if (!Array.isArray(db.chatMessages)) db.chatMessages = []; // chat added 2026-11-01
         return db;
       }
     } catch (e) { console.error('DB read failed, reseeding:', e.message); }
@@ -167,11 +169,46 @@ class JsonStore {
   // products, delivery zones and settings are NOT touched.
   async resetUserData() {
     this.db.orders = []; this.db.topups = []; this.db.wallets = {}; this.db.users = [];
+    this.db.chatMessages = [];
     this.db.counters = { order: 0, topup: 0 };
     this._persist();
   }
   async listWallets() {
     return Object.entries(this.db.wallets).map(([phone, w]) => ({ phone, balance: w.balance, ledger: w.ledger }));
+  }
+  // ---- Customer <-> Admin chat ----
+  // A message: {id, phone, sender ('customer'|'admin'), text,
+  // readAdmin, readCustomer, date}. readAdmin = the admin has seen it
+  // (customer messages); readCustomer = the customer has seen it
+  // (admin messages). Each side's own messages start as read by them.
+  async createChatMessage(m) { this.db.chatMessages.push(m); this._persist(); return m; }
+  async getChatMessages(phone) {
+    return this.db.chatMessages.filter(m => m.phone === phone)
+      .sort((a, b) => new Date(a.date) - new Date(b.date) || (a.id < b.id ? -1 : 1));
+  }
+  async listChats() {
+    const byPhone = {};
+    for (const m of this.db.chatMessages) {
+      const c = byPhone[m.phone] || (byPhone[m.phone] = { phone: m.phone, last: null, unread: 0 });
+      if (!c.last || new Date(m.date) >= new Date(c.last.date)) c.last = m;
+      if (m.sender === 'customer' && !m.readAdmin) c.unread++;
+    }
+    return Object.values(byPhone).map(c => {
+      const u = this.db.users.find(x => x.phone === c.phone);
+      return { phone: c.phone, name: u ? u.name : c.phone, lastText: c.last.text, lastSender: c.last.sender, lastDate: c.last.date, unread: c.unread };
+    }).sort((a, b) => new Date(b.lastDate) - new Date(a.lastDate));
+  }
+  async markChatReadByAdmin(phone) {
+    for (const m of this.db.chatMessages) if (m.phone === phone && m.sender === 'customer') m.readAdmin = true;
+    this._persist();
+  }
+  async markChatReadByCustomer(phone) {
+    for (const m of this.db.chatMessages) if (m.phone === phone && m.sender === 'admin') m.readCustomer = true;
+    this._persist();
+  }
+  async deleteChatMessages(phone) {
+    this.db.chatMessages = this.db.chatMessages.filter(m => m.phone !== phone);
+    this._persist();
   }
   async nextCounter(name) { this.db.counters[name] = (this.db.counters[name] || 0) + 1; this._persist(); return this.db.counters[name]; }
   async upsertCustomer() { /* JSON store keeps customer info on the order itself */ }
@@ -217,6 +254,11 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS counters (
   name TEXT PRIMARY KEY, value INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id TEXT PRIMARY KEY, phone TEXT NOT NULL, sender TEXT NOT NULL,
+  text TEXT NOT NULL, read_admin BOOLEAN NOT NULL DEFAULT FALSE,
+  read_customer BOOLEAN NOT NULL DEFAULT FALSE, created_at TIMESTAMPTZ NOT NULL
+);
 `;
 
 function productFromRow(r) {
@@ -242,6 +284,13 @@ function userFromRow(r) {
     id: r.id, name: r.name, phone: r.phone,
     passwordHash: r.password_hash, salt: r.salt,
     createdAt: new Date(r.created_at).toISOString(),
+  };
+}
+function chatMessageFromRow(r) {
+  return {
+    id: r.id, phone: r.phone, sender: r.sender, text: r.text,
+    readAdmin: r.read_admin, readCustomer: r.read_customer,
+    date: new Date(r.created_at).toISOString(),
   };
 }
 
@@ -388,6 +437,53 @@ class PgStore {
     const { rows } = await this.pool.query('SELECT * FROM wallet_entries ORDER BY phone');
     return rows.map(r => ({ phone: r.phone, balance: r.balance, ledger: r.ledger }));
   }
+  // ---- Customer <-> Admin chat ----
+  async createChatMessage(m) {
+    await this.pool.query(
+      'INSERT INTO chat_messages (id, phone, sender, text, read_admin, read_customer, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+      [m.id, m.phone, m.sender, m.text, m.readAdmin, m.readCustomer, m.date]);
+    return m;
+  }
+  async getChatMessages(phone) {
+    const { rows } = await this.pool.query(
+      'SELECT * FROM chat_messages WHERE phone = $1 ORDER BY created_at ASC, id ASC', [phone]);
+    return rows.map(chatMessageFromRow);
+  }
+  async listChats() {
+    // Newest first per phone; aggregate in JS (a correlated subquery in
+    // the SELECT list is valid in Postgres but pg-mem cannot run it, and
+    // chat volume is small). Names come from users, then customers.
+    const { rows } = await this.pool.query('SELECT * FROM chat_messages ORDER BY created_at DESC, id DESC');
+    const byPhone = {};
+    for (const r of rows) {
+      const m = chatMessageFromRow(r);
+      const c = byPhone[m.phone] || (byPhone[m.phone] = { phone: m.phone, last: m, unread: 0 });
+      if (m.sender === 'customer' && !m.readAdmin) c.unread++;
+    }
+    const phones = Object.keys(byPhone);
+    const names = {};
+    if (phones.length) {
+      const { rows: urows } = await this.pool.query('SELECT phone, name FROM users WHERE phone = ANY($1)', [phones]);
+      for (const u of urows) names[u.phone] = u.name;
+      const { rows: crows } = await this.pool.query('SELECT phone, name FROM customers WHERE phone = ANY($1)', [phones]);
+      for (const cu of crows) if (!names[cu.phone]) names[cu.phone] = cu.name;
+    }
+    return Object.values(byPhone).map(c => ({
+      phone: c.phone, name: names[c.phone] || c.phone,
+      lastText: c.last.text, lastSender: c.last.sender, lastDate: c.last.date, unread: c.unread,
+    })).sort((a, b) => new Date(b.lastDate) - new Date(a.lastDate));
+  }
+  async markChatReadByAdmin(phone) {
+    await this.pool.query(
+      "UPDATE chat_messages SET read_admin = TRUE WHERE phone = $1 AND sender = 'customer'", [phone]);
+  }
+  async markChatReadByCustomer(phone) {
+    await this.pool.query(
+      "UPDATE chat_messages SET read_customer = TRUE WHERE phone = $1 AND sender = 'admin'", [phone]);
+  }
+  async deleteChatMessages(phone) {
+    await this.pool.query('DELETE FROM chat_messages WHERE phone = $1', [phone]);
+  }
   async getUserByPhone(phone) {
     const { rows } = await this.pool.query('SELECT * FROM users WHERE phone = $1', [phone]);
     return rows.length ? userFromRow(rows[0]) : null;
@@ -419,6 +515,7 @@ class PgStore {
     await this.pool.query('DELETE FROM wallet_entries');
     await this.pool.query('DELETE FROM customers');
     await this.pool.query('DELETE FROM users');
+    await this.pool.query('DELETE FROM chat_messages');
     await this.pool.query('UPDATE counters SET value = 0');
   }
   async nextCounter(name) {

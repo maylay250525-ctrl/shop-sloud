@@ -257,6 +257,48 @@ app.post('/api/topups', requireAuth, ah(async (req, res) => {
 }));
 
 // ---------------------------------------------------------------------------
+// Customer <-> Admin chat — the customer writes from Profile ("admin နဲ့
+// စကားပြောရန်"), the admin answers from Admin -> Chats. Messages are
+// keyed by the customer's phone (from the login token, never the request).
+// ---------------------------------------------------------------------------
+function chatPublic(m) { return { id: m.id, sender: m.sender, text: m.text, date: m.date }; }
+function newChatMessage(phone, sender, text) {
+  return {
+    id: 'm' + Date.now().toString(36) + Math.random().toString(16).slice(2, 6),
+    phone, sender, text,
+    readAdmin: sender === 'admin', readCustomer: sender === 'customer',
+    date: new Date().toISOString(),
+  };
+}
+function validChatText(body) {
+  const text = String((body || {}).text || '').trim();
+  return text && text.length <= 1000 ? text : '';
+}
+
+// My conversation with the admin (marks admin messages as read by me).
+app.get('/api/chat', requireAuth, ah(async (req, res) => {
+  const phone = req.user.phone;
+  const messages = await store.getChatMessages(phone);
+  const unread = messages.filter(m => m.sender === 'admin' && !m.readCustomer).length;
+  await store.markChatReadByCustomer(phone);
+  res.json({ messages: messages.map(chatPublic), unread });
+}));
+
+// How many admin replies I have not read yet (badge on the Profile button).
+app.get('/api/chat/unread', requireAuth, ah(async (req, res) => {
+  const messages = await store.getChatMessages(req.user.phone);
+  res.json({ unread: messages.filter(m => m.sender === 'admin' && !m.readCustomer).length });
+}));
+
+// Send a message to the admin.
+app.post('/api/chat', requireAuth, ah(async (req, res) => {
+  const text = validChatText(req.body);
+  if (!text) return res.status(400).json({ error: 'message required (max 1000 chars)' });
+  const m = await store.createChatMessage(newChatMessage(req.user.phone, 'customer', text));
+  res.status(201).json(chatPublic(m));
+}));
+
+// ---------------------------------------------------------------------------
 // Admin API (passcode in x-admin-passcode header)
 // ---------------------------------------------------------------------------
 app.post('/api/admin/login', (req, res) => {
@@ -369,6 +411,25 @@ app.patch('/api/admin/settings', requireAdmin, ah(async (req, res) => {
   res.json(await store.updateSettings(fields));
 }));
 
+// Customer chat conversations (newest message first), with unread counts.
+app.get('/api/admin/chats', requireAdmin, ah(async (req, res) => res.json(await store.listChats())));
+
+// One customer's conversation (marks their messages as read by the admin).
+app.get('/api/admin/chats/:phone', requireAdmin, ah(async (req, res) => {
+  const phone = decodeURIComponent(req.params.phone);
+  const messages = await store.getChatMessages(phone);
+  await store.markChatReadByAdmin(phone);
+  res.json(messages.map(chatPublic));
+}));
+
+// Admin replies to a customer.
+app.post('/api/admin/chats/:phone/send', requireAdmin, ah(async (req, res) => {
+  const text = validChatText(req.body);
+  if (!text) return res.status(400).json({ error: 'message required (max 1000 chars)' });
+  const m = await store.createChatMessage(newChatMessage(decodeURIComponent(req.params.phone), 'admin', text));
+  res.status(201).json(chatPublic(m));
+}));
+
 app.get('/api/admin/wallets', requireAdmin, ah(async (req, res) => res.json(await store.listWallets())));
 
 // Customer accounts (no password hashes are ever sent out).
@@ -388,10 +449,13 @@ app.post('/api/admin/users/:phone/reset-password', requireAdmin, ah(async (req, 
 }));
 
 // Delete one customer account (their wallet balance, orders and top-ups
-// stay in Admin history; only the login account is removed).
+// stay in Admin history; only the login account is removed). Their chat
+// messages with the admin are deleted too.
 app.delete('/api/admin/users/:phone', requireAdmin, ah(async (req, res) => {
-  const ok = await store.deleteUser(decodeURIComponent(req.params.phone));
+  const phone = decodeURIComponent(req.params.phone);
+  const ok = await store.deleteUser(phone);
   if (!ok) return res.status(404).json({ error: 'not found' });
+  await store.deleteChatMessages(phone);
   res.json({ ok: true });
 }));
 
