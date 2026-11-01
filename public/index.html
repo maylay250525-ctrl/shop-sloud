@@ -262,6 +262,7 @@ function showView(v){
   if(v==='wallet'&&typeof loadWallet==='function'){loadWallet();startWalletRefresh()}else if(typeof stopWalletRefresh==='function')stopWalletRefresh();
   if(v==='profile'&&typeof loadMyOrders==='function'){loadMyOrders();startOrdersRefresh()}else if(typeof stopOrdersRefresh==='function')stopOrdersRefresh();
   if(v==='profile'&&typeof loadChatUnread==='function')loadChatUnread();
+  if(v==='cart'&&lastPlacedOrder){refreshOrderMsg();startOrderMsgRefresh()}else if(typeof stopOrderMsgRefresh==='function')stopOrderMsgRefresh();
   window.scrollTo({top:0});
 }
 document.querySelectorAll('#bottomNav button').forEach(b=>b.addEventListener('click',()=>showView(b.dataset.view)));
@@ -351,12 +352,17 @@ function updateFee(){
 }
 $('#coTownship').addEventListener('change',updateFee);
 $('#search').addEventListener('input',renderProducts);
+// The order confirmation message ("Order ORD-0015 — Status: pending") is
+// written once when the order is placed — it must keep up with the live
+// status (Admin may confirm/deliver it), or it contradicts the Profile list.
+let lastPlacedOrder=null;
 $('#placeOrder').addEventListener('click',async()=>{
   try{
     const items=Object.entries(cart).map(([productId,qty])=>({productId,qty}));
     const o=await api('/api/orders',{method:'POST',body:JSON.stringify({customerName:$('#coName').value,phone:$('#coPhone').value,address:$('#coAddress').value,township:$('#coTownship').value,items,paymentMethod:$('#coPay').value})});
+    lastPlacedOrder={id:o.id,total:o.total};
     $('#orderMsg').innerHTML=`<div class="notice">✅ Order ${o.id} — Total ${fmt(o.total)} · Status: ${o.status}</div>`;
-    cart={}; renderCart(); loadShop(); loadMyOrders();
+    cart={}; renderCart(); loadShop(); loadMyOrders(); startOrderMsgRefresh();
   }catch(e){$('#orderMsg').innerHTML=`<div class="notice">❌ ${esc(e.message)}</div>`}
 });
 </script>
@@ -537,6 +543,22 @@ async function refreshMyOrders(){
   try{
     const list=await api('/api/orders');
     $('#myOrders').innerHTML=list.map(o=>`<div class="card" style="margin:8px 0"><b>${o.id}</b> · ${fmt(o.total)} · <span class="badge ${o.status}">${o.status}</span><br><span class="muted">${o.items.map(i=>esc(i.name)+' ×'+i.qty).join(', ')} · ${esc(o.township)}</span></div>`).join('')||'<p class="muted">—</p>';
+  }catch(e){}
+}
+// Order confirmation message in the Cart tab, every 1s while the Cart tab
+// is open — updates the status text only, never touches any input.
+let orderMsgTimer=null;
+function startOrderMsgRefresh(){stopOrderMsgRefresh();orderMsgTimer=setInterval(refreshOrderMsg,1000)}
+function stopOrderMsgRefresh(){if(orderMsgTimer){clearInterval(orderMsgTimer);orderMsgTimer=null}}
+async function refreshOrderMsg(){
+  if($('#cartView').classList.contains('hidden'))return;
+  const m=$('#orderMsg');
+  if(!m||!lastPlacedOrder)return;
+  try{
+    const list=await api('/api/orders');
+    const o=list.find(x=>x.id===lastPlacedOrder.id);
+    if(!o)return;
+    m.innerHTML=`<div class="notice">✅ Order ${o.id} — Total ${fmt(o.total)} · Status: ${o.status}</div>`;
   }catch(e){}
 }
 
