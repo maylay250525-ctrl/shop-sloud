@@ -535,6 +535,13 @@ app.post('/api/admin/topups/:id/reject', requireAdmin, ah(async (req, res) => {
   res.json({ ...t, status: 'rejected' });
 }));
 
+// Admin deletes one top-up record (test-data cleanup). Admin-only.
+app.delete('/api/admin/topups/:id', requireAdmin, ah(async (req, res) => {
+  const ok = await store.deleteTopup(req.params.id);
+  if (!ok) return res.status(404).json({ error: 'not found' });
+  res.json({ ok: true });
+}));
+
 // Admin reads (same data as the shop endpoints, but gated by the admin
 // passcode instead of a customer token — the Admin page must use these).
 app.get('/api/admin/products', requireAdmin, ah(async (req, res) => res.json(await store.getProducts())));
@@ -633,6 +640,14 @@ app.post('/api/admin/wallets/:phone/adjust', requireAdmin, ah(async (req, res) =
   w.ledger.push({ type: type === 'credit' ? 'admin_credit' : 'admin_debit', amount: amt, transferId: null, date: new Date().toISOString(), note: cleanNote || (type === 'credit' ? 'Admin က ငွေထည့်ပေးတာ' : 'Admin က ငွေထုတ်တာ') });
   await store.saveWallet(phone, w);
   res.json({ phone, balance: w.balance });
+}));
+
+// Admin deletes one wallet row entirely (balance + ledger). Admin-only,
+// for test wallets and wallets left behind by deleted accounts.
+app.delete('/api/admin/wallets/:phone', requireAdmin, ah(async (req, res) => {
+  const ok = await store.deleteWallet(decodeURIComponent(req.params.phone));
+  if (!ok) return res.status(404).json({ error: 'not found' });
+  res.json({ ok: true });
 }));
 
 // ---------------------------------------------------------------------------
