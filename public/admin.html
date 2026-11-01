@@ -320,7 +320,8 @@ async function loadAdmin(){
     }else if(adminTab==='settings'){
       const s=await aapi('/api/admin/settings');
       setAdminContent(`<div class="card"><h3>Recipient (KPay / WavePay)</h3><label class="muted">Admin နာမည်</label><input id="sName" value="${esc(s.recipientName)}"><label class="muted">Admin ဖုန်း</label><input id="sPhone" value="${esc(s.recipientPhone)}"><label class="muted">ပို့ခ အခမဲ့ ဖြစ်မည့် ပမာဏ (Ks) — အော်ဒါ ဒီပမာဏ ပြည့်ရင် ပို့ခ 0 Ks</label><input id="sFree" type="number" value="${s.freeThreshold}"><label class="muted">အခြားမြို့နယ် ပို့ခ (Ks)</label><input id="sOther" type="number" value="${s.otherTownshipFee}"><label class="muted">ကြေညာချက် — ဆိုင်အပေါ်ဆုံးမှာ ညာကနေ ဘယ်ကို ပြေးနေတဲ့ စာတန်း (ဗလာထားရင် မပေါ်ဘူး)</label><textarea id="sAnnounce" rows="2">${esc(s.announcement||'')}</textarea><label style="display:block;margin-top:8px"><input type="checkbox" id="sAi" ${s.aiEnabled===false?'':'checked'}> ✨ AI အကြံပြုချက် ဖွင့်မယ် (Chats မှာ Admin ကို အဖြေ စဉ်းစားပေးတာ)</label><button class="primary" onclick="saveSettings()">Save</button><div id="sMsg"></div></div>`+
-      `<div class="card"><h3>⚠️ User data ဖျက်မယ်</h3><p class="muted">အော်ဒါ၊ ငွေဖြည့်၊ wallet၊ အကောင့်များ အားလုံး ဖျက်မယ်။ ပစ္စည်း၊ ပို့ခ၊ setting တွေ မပျက်ဘူး။</p><button class="warn" onclick="resetUserData()">ဖျက်မည်</button><div id="resetMsg"></div></div>`);
+      `<div class="card"><h3>⚠️ User data ဖျက်မယ်</h3><p class="muted">အော်ဒါ၊ ငွေဖြည့်၊ wallet၊ အကောင့်များ အားလုံး ဖျက်မယ်။ ပစ္စည်း၊ ပို့ခ၊ setting တွေ မပျက်ဘူး။</p><button class="warn" onclick="resetUserData()">ဖျက်မည်</button><div id="resetMsg"></div></div>`+
+      `<div class="card"><h3>💾 Backup ထုတ်မယ်</h3><p class="muted">ပစ္စည်း၊ အော်ဒါ၊ ငွေဖြည့်၊ wallet၊ အကောင့်၊ chat အားလုံးကို file တစ်ခု အဖြစ် ထုတ်မယ်။ ဖျက်တာ မလုပ်ခင် ဒါကို နှိပ်ပြီး file ကို သိမ်းထားပါ — file ထဲမှာ password တွေ ပါလို့ ဘယ်သူ့ကိုမှ မပေးပါနဲ့။</p><button class="primary" onclick="downloadBackup()">💾 Backup ထုတ်မည်</button><div id="backupMsg"></div></div>`);
     }
   }catch(e){setAdminContent(`<div class="notice">❌ ${esc(e.message)}</div>`)}
 }
@@ -527,6 +528,20 @@ window.delUser=async phone=>{
   loadAdmin();
 };
 window.resetUserData=async()=>{if(!confirm('User data အားလုံး (အော်ဒါ၊ ငွေဖြည့်၊ wallet၊ အကောင့်) ဖျက်မှာလား?'))return;await aapi('/api/admin/reset-user-data',{method:'POST'});$('#resetMsg').textContent='ဖျက်ပြီးပြီ ✅'};
+window.downloadBackup=async()=>{
+  const m=$('#backupMsg'); if(m)m.textContent='ထုတ်နေတယ်…';
+  try{
+    const data=await aapi('/api/admin/backup');
+    const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+    const a=document.createElement('a');
+    const d=new Date(),p=n=>String(n).padStart(2,'0');
+    a.href=URL.createObjectURL(blob);
+    a.download=`shop-backup-${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}.json`;
+    document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+    if(m)m.textContent='Backup ထုတ်ပြီးပြီ ✅ — file ကို သေချာ သိမ်းထားပါ';
+  }catch(e){ if(m)m.textContent='❌ '+e.message; }
+};
 // Auto-login from a remembered 24h session (runs last, after every
 // declaration above, so no let/const is still in its temporal dead zone).
 // Fixed 24h from the last manual login — auto-login does NOT extend it,
