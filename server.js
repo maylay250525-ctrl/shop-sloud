@@ -31,10 +31,55 @@ let store; // set in start() before listening
 // Async-handler wrapper: forward errors to Express instead of hanging.
 const ah = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
+// Brute-force protection for the admin passcode: after 5 failed attempts
+// from one IP, that IP is locked out for 15 minutes (429 'locked').
+// In-memory only — a server restart clears it. The client IP comes from
+// X-Forwarded-For: Render terminates TLS at its proxy, so req.ip would be
+// the proxy's address, not the client's. Guessing via ANY admin endpoint
+// counts (the login route and requireAdmin share this store), so the
+// passcode cannot be hammered through another API either.
+const LOGIN_MAX_FAILS = 5;
+const LOGIN_LOCK_MS = 15 * 60 * 1000;
+const loginFails = new Map(); // ip -> { fails, lockedUntil, lastFail }
+function clientIp(req) {
+  const fwd = req.headers['x-forwarded-for'];
+  if (typeof fwd === 'string' && fwd) return fwd.split(',')[0].trim();
+  return req.ip || (req.socket && req.socket.remoteAddress) || 'unknown';
+}
+function loginLocked(req) {
+  const rec = loginFails.get(clientIp(req));
+  if (!rec) return 0;
+  if (rec.lockedUntil && Date.now() < rec.lockedUntil) {
+    return Math.ceil((rec.lockedUntil - Date.now()) / 1000);
+  }
+  if (rec.lockedUntil) loginFails.delete(clientIp(req));
+  return 0;
+}
+function recordAdminFail(req) {
+  const ip = clientIp(req);
+  const rec = loginFails.get(ip) || { fails: 0, lockedUntil: 0, lastFail: 0 };
+  rec.fails += 1;
+  rec.lastFail = Date.now();
+  if (rec.fails >= LOGIN_MAX_FAILS) rec.lockedUntil = Date.now() + LOGIN_LOCK_MS;
+  loginFails.set(ip, rec);
+}
+function clearAdminFails(req) { loginFails.delete(clientIp(req)); }
+// Sweep stale entries (expired lockouts, old failures) once a minute.
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, rec] of loginFails) {
+    if ((rec.lockedUntil && now >= rec.lockedUntil) || (!rec.lockedUntil && now - rec.lastFail > LOGIN_LOCK_MS)) loginFails.delete(ip);
+  }
+}, 60 * 1000).unref();
+
 function requireAdmin(req, res, next) {
+  const retryAfter = loginLocked(req);
+  if (retryAfter) return res.status(429).json({ error: 'locked', retryAfter });
   if (req.headers['x-admin-passcode'] !== ADMIN_PASSCODE) {
+    recordAdminFail(req);
     return res.status(401).json({ error: 'unauthorized' });
   }
+  clearAdminFails(req);
   next();
 }
 
@@ -439,8 +484,11 @@ setInterval(() => {
 // Admin API (passcode in x-admin-passcode header)
 // ---------------------------------------------------------------------------
 app.post('/api/admin/login', (req, res) => {
+  const retryAfter = loginLocked(req);
+  if (retryAfter) return res.status(429).json({ error: 'locked', retryAfter });
   const { passcode } = req.body || {};
-  if (passcode === ADMIN_PASSCODE) return res.json({ ok: true });
+  if (passcode === ADMIN_PASSCODE) { clearAdminFails(req); return res.json({ ok: true }); }
+  recordAdminFail(req);
   res.status(401).json({ error: 'wrong passcode' });
 });
 
