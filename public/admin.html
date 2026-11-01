@@ -58,6 +58,19 @@ a{color:var(--accent);text-decoration:none;font-weight:600}
 .chart-bar{width:70%;max-width:34px;background:var(--accent);border-radius:6px 6px 0 0;min-height:3px}
 .chart-lbl{font-size:11px;color:var(--muted);margin-top:6px}
 .chart-lbl.today{color:var(--accent);font-weight:800}
+/* Admin login gate in the #2 neumorphic style: pale lavender card with
+   soft outer shadows, inset (pressed-in) inputs, purple button, monospace
+   headings. Login screen only — the rest of Admin is untouched. */
+#adminGate{background:#f4f6fb;border:0;border-radius:28px;box-shadow:18px 18px 40px #d3d8e6,-18px -18px 40px #ffffff;padding:34px 26px;text-align:center;max-width:420px;margin:24px auto}
+#adminGate .gate-eyebrow{font-family:ui-monospace,"SF Mono","Cascadia Code",Menlo,Consolas,monospace;letter-spacing:3px;color:#64748b;font-size:13px;font-weight:700}
+#adminGate h2{font-family:ui-monospace,"SF Mono","Cascadia Code",Menlo,Consolas,monospace;letter-spacing:2px;color:#334155}
+#adminGate input{background:#eef1f7;border:0;border-radius:16px;box-shadow:inset 5px 5px 10px #d8dce8,inset -5px -5px 10px #ffffff;padding:14px 16px;text-align:center;font-size:16px}
+#adminGate input:focus{box-shadow:inset 5px 5px 10px #d8dce8,inset -5px -5px 10px #ffffff,0 0 0 3px #ddd3f7}
+#adminGate button.primary{background:#9b7ede;border-color:#9b7ede;border-radius:16px;padding:13px 34px;width:100%;font-family:ui-monospace,"SF Mono","Cascadia Code",Menlo,Consolas,monospace;letter-spacing:2px;box-shadow:0 8px 20px rgba(155,126,222,.45)}
+body.dark #adminGate{background:#1e293b;box-shadow:18px 18px 40px #0b1120,-18px -18px 40px #2b3a55}
+body.dark #adminGate h2{color:#e2e8f0}
+body.dark #adminGate input{background:#0f172a;box-shadow:inset 5px 5px 10px #070d1a,inset -5px -5px 10px #243449;color:#f1f5f9}
+body.dark #adminGate input:focus{box-shadow:inset 5px 5px 10px #070d1a,inset -5px -5px 10px #243449,0 0 0 3px #4c3a8f}
 </style>
 </head>
 <body>
@@ -68,11 +81,13 @@ a{color:var(--accent);text-decoration:none;font-weight:600}
 </header>
 <main>
   <div class="card" id="adminGate">
-    <h2>Admin ဝင်ရန်</h2>
+    <div class="gate-eyebrow">Welcome Back</div>
+    <h2>🔐 Admin ဝင်ရန်</h2>
     <p class="muted">Passcode ထည့်မှ ဝင်လို့ရမယ်။ (မူရင်း passcode: <b>admin123</b> — Render မှာ ADMIN_PASSCODE env var နဲ့ ပြောင်းနိုင်တယ်)</p>
-    <input id="adminPass" type="password" placeholder="Passcode">
+    <input id="adminPass" type="password" placeholder="Passcode" onkeydown="if(event.key==='Enter')document.getElementById('adminLogin').click()">
     <button class="primary" id="adminLogin">ဝင်မည်</button>
     <div id="adminLoginMsg" class="muted"></div>
+    <p class="muted">တစ်ခါ ဝင်ပြီးရင် ဒီဖုန်းမှာ 24 နာရီ မှတ်ထားမယ် — 1 ရက်ပြည့်မှ ပြန်ဝင်ရမယ်။</p>
   </div>
   <div id="adminMain" class="hidden">
     <div class="tabs" id="adminTabs"></div>
@@ -113,10 +128,27 @@ async function loadProducts(){products=await aapi('/api/admin/products')}
 $('#themeBtn').addEventListener('click',()=>document.body.classList.toggle('dark'));
 const ADMIN_TABS=['overview','products','orders','delivery','wallet','topups','chats','users','settings'];
 $('#adminLogin').addEventListener('click',async()=>{
-  try{await api('/api/admin/login',{method:'POST',body:JSON.stringify({passcode:$('#adminPass').value})});adminPass=$('#adminPass').value;$('#adminGate').classList.add('hidden');$('#adminMain').classList.remove('hidden');renderAdminTabs();loadAdmin();adminTimer=setInterval(()=>{if(!adminTyping())loadAdmin();else scheduleAdminRefresh();},10000);adminIncomingTimer=setInterval(pollIncomingCalls,2000);}
+  try{await api('/api/admin/login',{method:'POST',body:JSON.stringify({passcode:$('#adminPass').value})});adminPass=$('#adminPass').value;saveAdminSession();enterAdmin();}
   catch(e){$('#adminLoginMsg').textContent=String(e.message||'').includes('locked')?'🔒 မှားတာ များသွားလို့ 15 မိနစ် ပိတ်ထားတယ် — ခဏစောင့်ပြီး ပြန်ဝင်ပါ':'Passcode မှားနေတယ် / Wrong passcode'}
 });
-$('#adminLogout').addEventListener('click',()=>{if(adminCall)endAdminCall();if(adminIncomingTimer){clearInterval(adminIncomingTimer);adminIncomingTimer=null}adminPass='';clearInterval(adminTimer);$('#incomingCall').classList.add('hidden');$('#adminCallBar').classList.add('hidden');$('#adminMain').classList.add('hidden');$('#adminGate').classList.remove('hidden')});
+$('#adminLogout').addEventListener('click',()=>{if(adminCall)endAdminCall();if(adminIncomingTimer){clearInterval(adminIncomingTimer);adminIncomingTimer=null}adminPass='';clearAdminSession();clearInterval(adminTimer);adminTimer=null;$('#incomingCall').classList.add('hidden');$('#adminCallBar').classList.add('hidden');$('#adminMain').classList.add('hidden');$('#adminGate').classList.remove('hidden')});
+// Enter the admin panel after a verified login (button or auto-login).
+function enterAdmin(){
+  $('#adminGate').classList.add('hidden');
+  $('#adminMain').classList.remove('hidden');
+  renderAdminTabs();loadAdmin();
+  if(adminTimer)clearInterval(adminTimer);
+  adminTimer=setInterval(()=>{if(!adminTyping())loadAdmin();else scheduleAdminRefresh();},10000);
+  if(adminIncomingTimer)clearInterval(adminIncomingTimer);
+  adminIncomingTimer=setInterval(pollIncomingCalls,2000);
+}
+// 24-hour admin session: after one login the passcode is remembered on
+// this phone only (localStorage) for 24 hours, then login is asked again.
+// The stored passcode is verified against the server on every auto-login,
+// so changing ADMIN_PASSCODE in Render ends old sessions at once.
+const ADMIN_SESSION_MS = 24 * 60 * 60 * 1000;
+function saveAdminSession(){ try{ localStorage.setItem('adminSession', JSON.stringify({ pass: adminPass, at: Date.now() })); }catch(e){} }
+function clearAdminSession(){ try{ localStorage.removeItem('adminSession'); }catch(e){} }
 function renderAdminTabs(){$('#adminTabs').innerHTML=ADMIN_TABS.map(x=>`<button class="${adminTab===x?'active':''}" onclick="setTab('${x}')">${x[0].toUpperCase()+x.slice(1)}</button>`).join('')}
 window.setTab=x=>{adminTab=x;renderAdminTabs();loadAdmin()};
 const ah={'x-admin-passcode':''};
@@ -495,6 +527,17 @@ window.delUser=async phone=>{
   loadAdmin();
 };
 window.resetUserData=async()=>{if(!confirm('User data အားလုံး (အော်ဒါ၊ ငွေဖြည့်၊ wallet၊ အကောင့်) ဖျက်မှာလား?'))return;await aapi('/api/admin/reset-user-data',{method:'POST'});$('#resetMsg').textContent='ဖျက်ပြီးပြီ ✅'};
+// Auto-login from a remembered 24h session (runs last, after every
+// declaration above, so no let/const is still in its temporal dead zone).
+// Fixed 24h from the last manual login — auto-login does NOT extend it,
+// so login is asked again once a day as requested.
+(async function autoAdminLogin(){
+  let s=null;
+  try{ s=JSON.parse(localStorage.getItem('adminSession')||'null'); }catch(e){}
+  if(!s || !s.pass || Date.now() - (s.at||0) >= ADMIN_SESSION_MS){ clearAdminSession(); return; }
+  try{ await api('/api/admin/login',{method:'POST',body:JSON.stringify({passcode:s.pass})}); adminPass=s.pass; enterAdmin(); }
+  catch(e){ clearAdminSession(); }
+})();
 </script>
 <!-- Customer profile photo full-screen viewer -->
 <div id="adminPhotoViewer" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:90;display:flex;align-items:center;justify-content:center" onclick="closeAdminPhotoViewer()">
