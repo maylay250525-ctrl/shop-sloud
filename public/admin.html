@@ -65,6 +65,7 @@ a{color:var(--accent)}
 <!-- Active call bar -->
 <div id="adminCallBar" class="hidden" style="position:fixed;left:12px;right:12px;bottom:76px;z-index:50;background:#14532d;color:#fff;border-radius:16px;padding:12px 16px;box-shadow:0 8px 30px rgba(0,0,0,.4);text-align:center">
   <div>📞 <b id="adminCallName"></b> · <span id="adminCallTimer">00:00</span></div>
+  <div id="adminMicWarn" class="hidden" style="color:#fbbf24;font-size:13px;margin-top:6px">Microphone ခွင့်မပြုထားဘူး — ဝယ်သူက Admin အသံကို ကြားရမှာ မဟုတ်ဘူး</div>
   <div style="display:flex;gap:10px;justify-content:center;margin-top:10px">
     <button id="adminCallMute" onclick="toggleAdminMute()" style="background:#166534;color:#fff;border:0;border-radius:50%;width:44px;height:44px;font-size:18px">🔊</button>
     <button onclick="endAdminCallUI()" style="background:#e11d48;color:#fff;border:0;border-radius:999px;padding:10px 20px">📞 ဖုန်းချမည်</button>
@@ -245,9 +246,17 @@ window.acceptCall=async()=>{
     const list=await aapi('/api/admin/calls/incoming');
     const c=list.find(x=>x.id===id);
     if(!c){adminRingingId=null;$('#incomingCall').classList.add('hidden');return}
-    adminStream=await navigator.mediaDevices.getUserMedia({audio:true});
+    // Same as the customer side: the answer is created from an empty
+    // audio transceiver first, and the mic track is attached with
+    // replaceTrack as soon as permission is granted — a slow (or
+    // missing) permission prompt never blocks answering the call.
     adminPc=new RTCPeerConnection(CALL_ICE);
-    adminStream.getTracks().forEach(t=>adminPc.addTrack(t,adminStream));
+    const sender=adminPc.addTransceiver('audio',{direction:'sendrecv'}).sender;
+    navigator.mediaDevices.getUserMedia({audio:true}).then(stream=>{
+      if(!adminPc){stream.getTracks().forEach(t=>t.stop());return}
+      adminStream=stream;
+      stream.getTracks().forEach(t=>{try{sender.replaceTrack(t)}catch(e){}});
+    }).catch(()=>{const w=$('#adminMicWarn');if(w)w.classList.remove('hidden')});
     adminPc.onicecandidate=e=>{if(e.candidate&&adminCall)aapi('/api/admin/calls/'+adminCall+'/candidate',{method:'POST',body:JSON.stringify({candidate:e.candidate})}).catch(()=>{})};
     adminPc.ontrack=e=>{const a=$('#adminRemoteAudio');a.srcObject=e.streams[0];a.play().catch(()=>{})};
     await adminPc.setRemoteDescription(new RTCSessionDescription(c.offer));
@@ -263,8 +272,7 @@ window.acceptCall=async()=>{
     adminCallStateTimer=setInterval(pollAdminCallState,1000);
     adminCallTick=setInterval(()=>{const t=$('#adminCallTimer');if(t)t.textContent=adminCallFmt(Math.floor((Date.now()-adminCallStart)/1000))},1000);
   }catch(e){
-    alert('Microphone ဖွင့်ခွင့် လိုပါတယ်');
-    if(adminStream){adminStream.getTracks().forEach(t=>t.stop());adminStream=null}
+    alert('ခေါ်ဆိုမှု မစတင်နိုင်ဘူး — လိုင်းစစ်ပြီး ပြန်စမ်းကြည့်ပါ');
     if(adminPc){try{adminPc.close()}catch(_){}adminPc=null}
   }
 };
@@ -290,6 +298,7 @@ function endAdminCall(){
   if(adminStream){adminStream.getTracks().forEach(t=>t.stop());adminStream=null}
   adminCall=null;adminSentCands=0;adminMuted=false;
   const m=$('#adminCallMute');if(m)m.textContent='🔊';
+  const w=$('#adminMicWarn');if(w)w.classList.add('hidden');
   $('#adminCallBar').classList.add('hidden');
   if(id)aapi('/api/admin/calls/'+id+'/end',{method:'POST'}).catch(()=>{});
 }
