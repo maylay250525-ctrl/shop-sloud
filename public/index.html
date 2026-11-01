@@ -175,12 +175,16 @@ body.dark #bottomNav button.active{background:#1d3a2c}
   <!-- ============ PROFILE VIEW ============ -->
   <div id="profileView" class="hidden">
     <div class="card">
-      <h2 data-t="profile">Profile — ပရိုဖိုင်</h2>
+      <div style="text-align:center">
+        <img id="pPhotoPrev" class="hidden" style="width:120px;height:120px;object-fit:cover;border-radius:50%;cursor:pointer" onclick="openPhotoMenu()">
+        <div id="pPhotoPlaceholder" class="hidden" style="width:120px;height:120px;border-radius:50%;background:#e2e8f0;display:inline-flex;align-items:center;justify-content:center;font-size:56px;cursor:pointer" onclick="openPhotoMenu()">👤</div>
+      </div>
+      <h2 data-t="profile" style="text-align:center">Profile — ပရိုဖိုင်</h2>
       <div id="profileSummary"></div>
       <input id="pName" placeholder="နာမည် / Name" disabled>
       <input id="pPhone" placeholder="ဖုန်း / Phone" disabled>
       <input id="pAddress" placeholder="လိပ်စာ / Address">
-      <div class="row"><img id="pPhotoPrev" class="hidden" style="width:72px;height:72px;object-fit:cover;border-radius:50%"><input id="pPhoto" type="file" accept="image/*" style="flex:1"></div>
+      <input id="pPhoto" type="file" accept="image/*" class="hidden">
       <button class="primary" id="pSave" data-t="saveProfile">သိမ်းမည်</button>
       <span id="pMsg" class="muted"></span>
       <h3 data-t="myFavs">ကျွန်ုပ်၏ အကြိုက်များ</h3>
@@ -460,7 +464,7 @@ async function loadWallet(){
   try{
     const w=await api('/api/wallet');
     $('#wBalance').innerHTML=`<b>Balance: ${fmt(w.balance)}</b>`;
-    $('#wLedger').innerHTML=w.ledger.slice().reverse().map(l=>`<div class="muted">${l.date.slice(0,10)} · ${l.type} ${fmt(l.amount)} ${l.transferId?esc(l.transferId):''}</div>`).join('')||'<p class="muted">—</p>';
+    $('#wLedger').innerHTML=w.ledger.slice().reverse().map(l=>`<div class="muted">${l.date.slice(0,10)} · ${l.type} ${fmt(l.amount)} ${l.transferId?esc(l.transferId):''} ${l.note?esc(l.note):''}</div>`).join('')||'<p class="muted">—</p>';
     loadMyTopups();
   }catch(e){$('#wBalance').innerHTML=`<div class="notice">❌ ${esc(e.message)}</div>`}
 }
@@ -642,8 +646,9 @@ function renderProfile(){
   $('#pName').value=authUser?authUser.name:(p.name||'');
   $('#pPhone').value=authUser?authUser.phone:(p.phone||'');
   $('#pAddress').value=p.address||'';
-  const prev=$('#pPhotoPrev');
-  if(p.photo){prev.src=p.photo;prev.classList.remove('hidden')}else{prev.classList.add('hidden')}
+  const prev=$('#pPhotoPrev'), plc=$('#pPhotoPlaceholder');
+  if(p.photo){prev.src=p.photo;prev.classList.remove('hidden');if(plc)plc.classList.add('hidden')}
+  else{prev.classList.add('hidden');if(plc)plc.classList.remove('hidden')}
   const v=$('#profileSummary');
   const nm=authUser?authUser.name:p.name, ph=authUser?authUser.phone:p.phone;
   if(nm||ph){v.innerHTML=`<p>👤 <b>${esc(nm||'')}</b> · ${esc(ph||'')}</p>${p.address?`<p class="muted">${esc(p.address)}</p>`:''}`}else{v.innerHTML='<p class="muted">—</p>'}
@@ -688,11 +693,36 @@ $('#pPhoto').addEventListener('change',e=>{
       c.getContext('2d').drawImage(img,0,0,c.width,c.height);
       profile.photo=c.toDataURL('image/jpeg',0.8);
       localStorage.setItem('profile',JSON.stringify(profile)); renderProfile();
+      syncPhotoToServer(profile.photo);
     };
     img.src=r.result;
   };
   r.readAsDataURL(f);
 });
+
+// ---- Profile photo: tap the photo for View / Change / Delete ----
+// No file-choose button is shown: tapping the avatar opens this menu.
+function openPhotoMenu(){
+  const has=!!profile.photo;
+  const v=$('#pmView'), d=$('#pmDelete');
+  if(v)v.style.display=has?'':'none';
+  if(d)d.style.display=has?'':'none';
+  $('#photoMenu').classList.remove('hidden');
+}
+function closePhotoMenu(){$('#photoMenu').classList.add('hidden')}
+function viewMyPhoto(){closePhotoMenu();if(!profile.photo)return;$('#photoViewerImg').src=profile.photo;$('#photoViewer').classList.remove('hidden')}
+function closePhotoViewer(){$('#photoViewer').classList.add('hidden')}
+function changeMyPhoto(){closePhotoMenu();$('#pPhoto').click()}
+async function deleteMyPhoto(){
+  profile.photo='';localStorage.setItem('profile',JSON.stringify(profile));renderProfile();closePhotoMenu();
+  await syncPhotoToServer('');
+}
+// Send the photo to the server too, so the Admin can see it in Chats.
+// (localStorage alone lives only on this phone.)
+async function syncPhotoToServer(photo){
+  if(!authUser)return;
+  try{await api('/api/profile/photo',{method:'POST',body:JSON.stringify({photo:photo||''})})}catch(e){/* stays local; Admin just won't see the new one yet */}
+}
 
 // ---- Language / theme ----
 function setLang(l){lang=l;$('#langBtn').textContent=lang==='my'?'English':'မြန်မာ';document.querySelectorAll('[data-t]').forEach(el=>el.textContent=t(el.dataset.t));selectedCat='';if(authUser)loadShop()}
@@ -712,5 +742,17 @@ async function initAuth(){
 }
 initAuth();
 </script>
+<!-- Profile photo menu + full-screen viewer -->
+<div id="photoMenu" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:80;display:flex;align-items:flex-end;justify-content:center" onclick="if(event.target===this)closePhotoMenu()">
+  <div style="background:#fff;border-radius:16px 16px 0 0;width:100%;max-width:480px;padding:8px 8px 16px">
+    <button id="pmView" onclick="viewMyPhoto()" style="width:100%;padding:14px;text-align:left;background:none;border:none;border-bottom:1px solid #eee;font-size:16px">🖼️ ပုံကို ကြည့်မယ်</button>
+    <button onclick="changeMyPhoto()" style="width:100%;padding:14px;text-align:left;background:none;border:none;border-bottom:1px solid #eee;font-size:16px">✏️ ပုံကို ပြင်မယ်</button>
+    <button id="pmDelete" onclick="deleteMyPhoto()" style="width:100%;padding:14px;text-align:left;background:none;border:none;border-bottom:1px solid #eee;font-size:16px;color:#e11d48">🗑️ ပုံကို ဖျက်မယ်</button>
+    <button onclick="closePhotoMenu()" style="width:100%;padding:14px;background:none;border:none;font-size:16px;color:#64748b">ပိတ်မယ်</button>
+  </div>
+</div>
+<div id="photoViewer" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:90;display:flex;align-items:center;justify-content:center" onclick="closePhotoViewer()">
+  <img id="photoViewerImg" style="max-width:100%;max-height:100%;object-fit:contain">
+</div>
 </body>
 </html>
