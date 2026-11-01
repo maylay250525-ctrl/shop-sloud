@@ -527,7 +527,7 @@ app.patch('/api/admin/delivery/:name', requireAdmin, ah(async (req, res) => {
 app.get('/api/admin/settings', requireAdmin, ah(async (req, res) => res.json(await store.getSettings())));
 app.patch('/api/admin/settings', requireAdmin, ah(async (req, res) => {
   const fields = {};
-  for (const k of ['recipientName', 'recipientPhone', 'freeThreshold', 'otherTownshipFee', 'announcement']) {
+  for (const k of ['recipientName', 'recipientPhone', 'freeThreshold', 'otherTownshipFee', 'announcement', 'aiEnabled']) {
     if (req.body[k] !== undefined) fields[k] = req.body[k];
   }
   res.json(await store.updateSettings(fields));
@@ -553,6 +553,111 @@ app.post('/api/admin/chats/:phone/send', requireAdmin, ah(async (req, res) => {
 }));
 
 app.get('/api/admin/wallets', requireAdmin, ah(async (req, res) => res.json(await store.listWallets())));
+
+// ---------------------------------------------------------------------------
+// Admin AI reply suggestions (Gemini free API, admin-only).
+// The AI never talks to customers directly: the admin taps "AI အကြံပြုချက်"
+// in a chat, the server asks Gemini for a draft reply, and the admin
+// reviews/edits it before sending. The key lives in GEMINI_API_KEY (Render
+// Environment) — never in code. Price/stock/delivery questions are answered
+// from the live shop data WITHOUT calling the AI (exact + no quota used).
+// A daily AI-call cap keeps us safely under the free tier.
+// ---------------------------------------------------------------------------
+const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-3.5-flash-lite'];
+const AI_DAILY_CAP = 400;
+let aiCalls = { date: '', count: 0 };
+function aiToday() {
+  const d = new Date().toISOString().slice(0, 10);
+  if (aiCalls.date !== d) aiCalls = { date: d, count: 0 };
+  return aiCalls;
+}
+function fmtKs(n) { return Number(n).toLocaleString() + ' Ks'; }
+async function callGemini(prompt) {
+  const key = process.env.GEMINI_API_KEY || '';
+  if (!key) return { error: 'ai_not_configured' };
+  const today = aiToday();
+  if (today.count >= AI_DAILY_CAP) return { error: 'ai_limit' };
+  for (const model of GEMINI_MODELS) {
+    try {
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.3, maxOutputTokens: 300 } }),
+      });
+      if (r.status === 404) continue; // model not available for this key: try the next one
+      if (!r.ok) {
+        if (r.status === 429) return { error: 'ai_limit' };
+        continue;
+      }
+      const j = await r.json();
+      const text = ((j && j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts) || []).map(p => p.text || '').join('').trim();
+      today.count++;
+      if (text) return { text };
+    } catch (e) { /* network error: try the next model */ }
+  }
+  return { error: 'ai_unavailable' };
+}
+// Exact answers from the live shop data — no AI call, no quota used.
+function ruleBasedReply(lastText, shop) {
+  const t = String(lastText || '').toLowerCase();
+  for (const p of shop.products) {
+    // Match the full name ("ဆန် (၅ ကီလို)") or just the base word ("ဆန်"),
+    // because customers write "ဆန်ဈေး ဘယ်လောက်", not the full product name.
+    const cands = [];
+    for (const n of [p.name, p.nameEn]) {
+      if (!n) continue;
+      const s = String(n).toLowerCase();
+      cands.push(s);
+      const base = s.split(' (')[0].split('（')[0].trim();
+      if (base.length >= 2) cands.push(base);
+    }
+    if (cands.some(n => n && t.includes(n))) {
+      if (/ဈေး|စျေး|ဘယ်လောက်|price/.test(t)) return `${p.name} က ${fmtKs(p.price)} ပါ။${p.stock > 0 ? ` ပစ္စည်း ${p.stock} ခု ရှိပါတယ်။` : ' အခု ပစ္စည်း ကုန်နေပါတယ်။'}`;
+      if (/ရှိ|ရ|လား|stock|ရလား/.test(t)) return p.stock > 0 ? `${p.name} ${p.stock} ခု ရှိပါတယ်။` : `${p.name} အခု ကုန်နေပါတယ်။`;
+      return `${p.name} က ${fmtKs(p.price)} ပါ။`;
+    }
+  }
+  if (/ပို့ခ|delivery|ပို့/.test(t)) {
+    const zones = shop.zones.map(z => `${z.name}: ${fmtKs(z.fee)}`).join(', ');
+    return `ပို့ခက မြို့နယ်အလိုက် ကွာပါတယ် — ${zones}။ ${fmtKs(shop.settings.freeThreshold)} ဖိုးပြည့်ရင် ပို့ခ အခမဲ့ပါ။`;
+  }
+  if (/ငွေဖြည့်|top ?up|kpay|wave/.test(t)) return `ငွေဖြည့်ချင်ရင် KPay / WavePay နဲ့ ${shop.settings.recipientName} (${shop.settings.recipientPhone}) ကို လွှဲပြီး Wallet ထဲက Top-up တင်ပေးပါ။ Admin အတည်ပြုပြီးရင် wallet ထဲ ငွေရောက်ပါမယ်။`;
+  return null;
+}
+// Admin asks for a draft reply to one customer (the AI never sends anything itself).
+app.post('/api/admin/ai/suggest', requireAdmin, ah(async (req, res) => {
+  const phone = String((req.body || {}).phone || '').trim();
+  if (!phone) return res.status(400).json({ error: 'phone required' });
+  const settings = await store.getSettings();
+  if (settings.aiEnabled === false) return res.json({ error: 'ai_disabled' });
+  const messages = await store.getChatMessages(phone);
+  const lastCustomer = [...messages].reverse().find(m => m.sender === 'customer');
+  if (!lastCustomer) return res.json({ error: 'no_message' });
+  const products = await store.getProducts();
+  const zones = await store.getZones();
+  const shop = { products, zones, settings };
+  const rule = ruleBasedReply(lastCustomer.text, shop);
+  if (rule) return res.json({ text: rule, source: 'rules' });
+  const orders = (await store.listOrders()).filter(o => o.phone === phone).slice(0, 3);
+  const convo = messages.slice(-20).map(m => (m.sender === 'customer' ? 'ဝယ်သူ' : 'Admin') + ': ' + m.text).join('\n');
+  const prompt = [
+    'မင်းက မြန်မာနိုင်ငံက online ဆိုင်တစ်ဆိုင်ရဲ့ Admin အကူပါ။ Admin ကိုယ်စား ဝယ်သူကို ပြန်ဖြေဖို့ မြန်မာလို စာတိုတစ်ခု စဉ်းစားပေးပါ။',
+    'စည်းမျဉ်းများ:',
+    '- အောက်က ပစ္စည်းစာရင်းထဲက ဈေးတွေပဲ သုံးပါ။ စာရင်းထဲမှာ မရှိတဲ့ ဈေး၊ မရှိတဲ့ ပစ္စည်း လုံးဝ မထွင်ပါနဲ့။ မသိရင် "မသိဘူး" လို့ ပြောပြီး Admin ကို မေးခိုင်းပါ။',
+    '- စာတိုတိုပဲ (၂-၃ ကြောင်းထက် မပိုရ)၊ ယဉ်ကျေးစွာ၊ မြန်မာလို။',
+    '- အဖြေစာသားပဲ ပြန်ပေးပါ။ ရှင်းပြချက်၊ ခေါင်းစဉ်တွေ မလိုဘူး။',
+    '',
+    'ပစ္စည်းစာရင်း: ' + products.map(p => `${p.name} ${fmtKs(p.price)} (လက်ကျန် ${p.stock})`).join(', '),
+    'ပို့ခ: ' + zones.map(z => `${z.name} ${fmtKs(z.fee)}`).join(', ') + `။ ${fmtKs(settings.freeThreshold)} ဖိုးပြည့်ရင် ပို့ခ အခမဲ့။`,
+    `ငွေဖြည့်ရန်: KPay / WavePay နဲ့ ${settings.recipientName} (${settings.recipientPhone}) ကို လွှဲပါ။`,
+    orders.length ? 'ဒီဝယ်သူရဲ့ အော်ဒါများ: ' + orders.map(o => `${o.id} (${o.status}, ${fmtKs(o.total)})`).join(', ') : 'ဒီဝယ်သူ အော်ဒါ မရှိသေးဘူး။',
+    '',
+    'စကားစဉ်:',
+    convo,
+  ].join('\n');
+  const r = await callGemini(prompt);
+  if (r.error) return res.json({ error: r.error });
+  res.json({ text: r.text, source: 'ai' });
+}));
 
 // Customer accounts (no password hashes are ever sent out).
 app.get('/api/admin/users', requireAdmin, ah(async (req, res) => res.json(await store.listUsers())));
