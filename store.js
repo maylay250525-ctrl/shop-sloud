@@ -158,6 +158,13 @@ class JsonStore {
     this._persist();
     return u;
   }
+  async updateUserPhoto(phone, photo) {
+    const u = this.db.users.find(x => x.phone === phone);
+    if (!u) return null;
+    u.photo = photo || '';
+    this._persist();
+    return u;
+  }
   async deleteUser(phone) {
     const i = this.db.users.findIndex(x => x.phone === phone);
     if (i < 0) return false;
@@ -195,7 +202,7 @@ class JsonStore {
     }
     return Object.values(byPhone).map(c => {
       const u = this.db.users.find(x => x.phone === c.phone);
-      return { phone: c.phone, name: u ? u.name : c.phone, lastText: c.last.text, lastSender: c.last.sender, lastDate: c.last.date, unread: c.unread };
+      return { phone: c.phone, name: u ? u.name : c.phone, photo: u ? (u.photo || '') : '', lastText: c.last.text, lastSender: c.last.sender, lastDate: c.last.date, unread: c.unread };
     }).sort((a, b) => new Date(b.lastDate) - new Date(a.lastDate));
   }
   async markChatReadByAdmin(phone) {
@@ -250,7 +257,8 @@ CREATE TABLE IF NOT EXISTS customers (
 );
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY, name TEXT NOT NULL, phone TEXT NOT NULL UNIQUE,
-  password_hash TEXT NOT NULL, salt TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL
+  password_hash TEXT NOT NULL, salt TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL,
+  photo TEXT
 );
 CREATE TABLE IF NOT EXISTS counters (
   name TEXT PRIMARY KEY, value INTEGER NOT NULL
@@ -285,6 +293,7 @@ function userFromRow(r) {
     id: r.id, name: r.name, phone: r.phone,
     passwordHash: r.password_hash, salt: r.salt,
     createdAt: new Date(r.created_at).toISOString(),
+    photo: r.photo || '',
   };
 }
 function chatMessageFromRow(r) {
@@ -306,6 +315,8 @@ class PgStore {
     await this.pool.query('ALTER TABLE settings ADD COLUMN IF NOT EXISTS announcement TEXT');
     // Migration: AI reply suggestions on/off (added 2026-11-02).
     await this.pool.query('ALTER TABLE settings ADD COLUMN IF NOT EXISTS ai_enabled BOOLEAN DEFAULT TRUE');
+    // Migration: customer profile photo (added 2026-11-02).
+    await this.pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS photo TEXT');
     // Seed once, when tables are empty.
     const { rows } = await this.pool.query('SELECT COUNT(*)::int AS n FROM products');
     if (rows[0].n === 0) {
@@ -465,14 +476,15 @@ class PgStore {
     }
     const phones = Object.keys(byPhone);
     const names = {};
+    const photos = {};
     if (phones.length) {
-      const { rows: urows } = await this.pool.query('SELECT phone, name FROM users WHERE phone = ANY($1)', [phones]);
-      for (const u of urows) names[u.phone] = u.name;
+      const { rows: urows } = await this.pool.query('SELECT phone, name, photo FROM users WHERE phone = ANY($1)', [phones]);
+      for (const u of urows) { names[u.phone] = u.name; photos[u.phone] = u.photo || ''; }
       const { rows: crows } = await this.pool.query('SELECT phone, name FROM customers WHERE phone = ANY($1)', [phones]);
       for (const cu of crows) if (!names[cu.phone]) names[cu.phone] = cu.name;
     }
     return Object.values(byPhone).map(c => ({
-      phone: c.phone, name: names[c.phone] || c.phone,
+      phone: c.phone, name: names[c.phone] || c.phone, photo: photos[c.phone] || '',
       lastText: c.last.text, lastSender: c.last.sender, lastDate: c.last.date, unread: c.unread,
     })).sort((a, b) => new Date(b.lastDate) - new Date(a.lastDate));
   }
@@ -504,6 +516,11 @@ class PgStore {
   async updateUserPassword(phone, passwordHash, salt) {
     const { rows } = await this.pool.query(
       'UPDATE users SET password_hash=$2, salt=$3 WHERE phone=$1 RETURNING *', [phone, passwordHash, salt]);
+    return rows.length ? userFromRow(rows[0]) : null;
+  }
+  async updateUserPhoto(phone, photo) {
+    const { rows } = await this.pool.query(
+      'UPDATE users SET photo=$2 WHERE phone=$1 RETURNING *', [phone, photo || '']);
     return rows.length ? userFromRow(rows[0]) : null;
   }
   async deleteUser(phone) {
