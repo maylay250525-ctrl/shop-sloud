@@ -131,7 +131,7 @@ async function loadAdmin(){
       c.innerHTML=`<div class="card"><p class="muted">Free delivery at/over ${fmt(dz.freeThreshold)} · Other townships ${fmt(dz.otherTownshipFee)}</p><table><tr><th>Township</th><th>Fee</th></tr>${dz.zones.map(z=>`<tr><td>${esc(z.name)}</td><td><input type="number" value="${z.fee}" onchange="editFee('${z.name}',this.value)"></td></tr>`).join('')}</table></div>`;
     }else if(adminTab==='wallet'){
       const list=await aapi('/api/admin/wallets');
-      c.innerHTML=`<div class="card">${list.map(w=>`<div><b>${esc(w.phone)}</b> — ${fmt(w.balance)}</div>`).join('')||'—'}</div>`;
+      c.innerHTML=`<div class="card">${list.map(w=>`<div style="border-bottom:1px solid #eee;padding:10px 0"><b>${esc(w.phone)}</b> — <b>${fmt(w.balance)}</b><div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><input id="wa-${esc(w.phone)}" type="number" placeholder="ပမာဏ (Ks)" style="width:120px"><input id="wn-${esc(w.phone)}" placeholder="မှတ်ချက် (ဥပမာ ဆိုင်မှ လက်ဆောင်ငွေ)" style="flex:1;min-width:140px"><button class="primary" onclick="walletAdjust('${esc(w.phone)}','credit')">➕ ငွေထည့်မယ်</button><button class="warn" onclick="walletAdjust('${esc(w.phone)}','debit')">➖ ငွေထုတ်မယ်</button></div><div id="wam-${esc(w.phone)}" class="muted"></div></div>`).join('')||'—'}</div>`;
     }else if(adminTab==='topups'){
       const list=await aapi('/api/admin/topups');
       c.innerHTML=`<div class="card"><table><tr><th>ID</th><th>Sender</th><th>Amount</th><th>Txn</th><th>Status</th><th></th></tr>${list.map(x=>`<tr><td>${x.id}</td><td>${esc(x.senderName)}<br><span class="muted">${esc(x.senderPhone)}</span></td><td>${fmt(x.amount)}<br><span class="muted">${x.method}</span></td><td>${esc(x.transferId)}</td><td><span class="badge ${x.status}">${x.status}</span></td><td>${x.status==='pending'?`<button class="primary" onclick="topupAct('${x.id}','approve')">Approve</button> <button class="warn" onclick="topupAct('${x.id}','reject')">Reject</button>`:''}</td></tr>`).join('')}</table></div>`;
@@ -146,12 +146,12 @@ async function loadAdmin(){
       const tabBtn=[...document.querySelectorAll('#adminTabs button')].find(b=>b.textContent.startsWith('Chats'));
       if(tabBtn)tabBtn.textContent=unread>0?`Chats (${unread})`:'Chats';
       if(!chatPhone){
-        c.innerHTML=`<div class="card"><h3>💬 ဝယ်သူတွေရဲ့ စာများ</h3>${list.map(x=>`<div style="border-bottom:1px solid #eee;padding:10px 0;cursor:pointer" onclick="openChat('${esc(x.phone)}')"><b>${esc(x.name||x.phone)}</b> · <span class="muted">${esc(x.phone)}</span>${x.unread?` <span class="badge" style="background:#e11d48;color:#fff">${x.unread} အသစ်</span>`:''}<br><span class="muted">${x.lastSender==='admin'?'Admin: ':''}${esc(x.lastText||'')}</span><br><span class="muted">${(x.lastDate||'').slice(0,16).replace('T',' ')}</span></div>`).join('')||'—'}</div>`;
+        c.innerHTML=`<div class="card"><h3>💬 ဝယ်သူတွေရဲ့ စာများ</h3>${list.map(x=>`<div style="border-bottom:1px solid #eee;padding:10px 0;cursor:pointer" onclick="openChat('${esc(x.phone)}')">${x.photo?`<img src="${esc(x.photo)}" style="width:40px;height:40px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:8px">`:''}<b>${esc(x.name||x.phone)}</b> · <span class="muted">${esc(x.phone)}</span>${x.unread?` <span class="badge" style="background:#e11d48;color:#fff">${x.unread} အသစ်</span>`:''}<br><span class="muted">${x.lastSender==='admin'?'Admin: ':''}${esc(x.lastText||'')}</span><br><span class="muted">${(x.lastDate||'').slice(0,16).replace('T',' ')}</span></div>`).join('')||'—'}</div>`;
       }else{
         const info=list.find(x=>x.phone===chatPhone);
         if(!document.querySelector('#adminChatMsgs')){
           adminChatSig='';
-          c.innerHTML=`<div class="card"><button onclick="closeChat()">← ပြန်သွားမည်</button> <b>${esc(info?info.name||chatPhone:chatPhone)}</b> · <span class="muted">${esc(chatPhone)}</span><div id="adminChatMsgs" style="height:320px;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px;background:#0f172a;border-radius:12px;margin:10px 0"></div><div style="display:flex;gap:8px"><input id="adminChatText" placeholder="ပြန်ဖြေပါ…" maxlength="1000" style="flex:1" onkeydown="if(event.key==='Enter')sendAdminChat()"><button class="primary" onclick="sendAdminChat()">➤ ပို့မည်</button></div><div style="display:flex;gap:8px;margin-top:8px;align-items:center"><button id="aiSuggestBtn" onclick="suggestAiReply()">✨ AI အကြံပြုချက်</button><span id="aiSuggestMsg" class="muted"></span></div></div>`;
+          c.innerHTML=`<div class="card"><button onclick="closeChat()">← ပြန်သွားမည်</button> ${info&&info.photo?`<img src="${esc(info.photo)}" onclick="viewAdminPhoto(this.src)" style="width:44px;height:44px;border-radius:50%;object-fit:cover;vertical-align:middle;cursor:pointer;margin-right:6px">`:''}<b>${esc(info?info.name||chatPhone:chatPhone)}</b> · <span class="muted">${esc(chatPhone)}</span><div id="adminChatMsgs" style="height:320px;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px;background:#0f172a;border-radius:12px;margin:10px 0"></div><div style="display:flex;gap:8px"><input id="adminChatText" placeholder="ပြန်ဖြေပါ…" maxlength="1000" style="flex:1" onkeydown="if(event.key==='Enter')sendAdminChat()"><button class="primary" onclick="sendAdminChat()">➤ ပို့မည်</button></div><div style="display:flex;gap:8px;margin-top:8px;align-items:center"><button id="aiSuggestBtn" onclick="suggestAiReply()">✨ AI အကြံပြုချက်</button><span id="aiSuggestMsg" class="muted"></span></div></div>`;
         }
         if(!adminChatTimer)adminChatTimer=setInterval(pollAdminChat,1000);
         await pollAdminChat();
@@ -190,6 +190,22 @@ window.delProduct=async id=>{if(confirm('Delete?')){await aapi('/api/admin/produ
 window.setOrderStatus=async(id,s)=>{await aapi('/api/admin/orders/'+id,{method:'PATCH',body:JSON.stringify({status:s})});loadAdmin()};
 window.editFee=async(name,v)=>{await aapi('/api/admin/delivery/'+encodeURIComponent(name),{method:'PATCH',body:JSON.stringify({fee:Number(v)})})};
 window.topupAct=async(id,act)=>{await aapi(`/api/admin/topups/${id}/${act}`,{method:'POST'});loadAdmin()};
+// Admin wallet adjustment: add (credit) or deduct (debit) money from a
+// user's wallet, with a note that shows in the customer's ledger.
+window.walletAdjust=async(phone,dir)=>{
+  const amtEl=$('#wa-'+phone), noteEl=$('#wn-'+phone), msgEl=$('#wam-'+phone);
+  const amount=Number(amtEl?amtEl.value:0);
+  const note=noteEl?noteEl.value.trim():'';
+  if(msgEl)msgEl.textContent='';
+  if(!amount||amount<=0){if(msgEl)msgEl.textContent='ပမာဏ ထည့်ပါ';return}
+  try{
+    const r=await aapi('/api/admin/wallets/'+encodeURIComponent(phone)+'/adjust',{method:'POST',body:JSON.stringify({type:dir,amount,note})});
+    if(msgEl)msgEl.textContent=`✅ ပြီးပြီ — လက်ကျန် ${fmt(r.balance)}`;
+    setTimeout(loadAdmin,1200);
+  }catch(e){
+    if(msgEl)msgEl.textContent=String(e.message||'').includes('insufficient')?'❌ လက်ကျန်မလောက်ဘူး':('❌ '+(e.message||'မအောင်မြင်ဘူး'));
+  }
+};
 // Admin chat: 1s poll of the open conversation; only the message list is
 // updated, the reply box (and any text typed in it) is never touched.
 function renderAdminChatMsgs(msgs){
@@ -238,6 +254,9 @@ window.suggestAiReply=async()=>{
   }catch(e){if(msg)msg.textContent='AI ခဏ အလုပ်မလုပ်ဘူး — ကိုယ်တိုင် ဖြေပေးပါ'}
   if(btn)btn.disabled=false;
 };
+// View a customer's profile photo full-screen (tap the photo in the chat header).
+window.viewAdminPhoto=src=>{const v=$('#adminPhotoViewer');if(!v)return;$('#adminPhotoViewerImg').src=src;v.classList.remove('hidden')};
+window.closeAdminPhotoViewer=()=>{const v=$('#adminPhotoViewer');if(v)v.classList.add('hidden')};
 
 // ---- Voice calls (admin side; WebRTC, peer-to-peer audio, no recording) ----
 // Incoming calls are polled every 2s on every tab while logged in. While
@@ -346,5 +365,9 @@ window.delUser=async phone=>{
 };
 window.resetUserData=async()=>{if(!confirm('User data အားလုံး (အော်ဒါ၊ ငွေဖြည့်၊ wallet၊ အကောင့်) ဖျက်မှာလား?'))return;await aapi('/api/admin/reset-user-data',{method:'POST'});$('#resetMsg').textContent='ဖျက်ပြီးပြီ ✅'};
 </script>
+<!-- Customer profile photo full-screen viewer -->
+<div id="adminPhotoViewer" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:90;display:flex;align-items:center;justify-content:center" onclick="closeAdminPhotoViewer()">
+  <img id="adminPhotoViewerImg" style="max-width:100%;max-height:100%;object-fit:contain">
+</div>
 </body>
 </html>
