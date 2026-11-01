@@ -214,9 +214,18 @@ body.dark #bottomNav button.active{background:#1d3a2c}
 </nav>
 <!-- ============ CHAT PAGE (dedicated full-screen chat with Admin) ============ -->
 <div id="chatView" class="hidden">
-  <div class="chat-head"><button onclick="closeChatPage()" style="background:none;border:0;color:#fff;font-size:18px;padding:2px 8px 2px 0">←</button>🤖 Admin <span class="dot"></span><span style="font-weight:400;color:#9fb3d1;font-size:13px">အွန်လိုင်း</span><span style="flex:1"></span><button onclick="closeChatPage()" style="background:none;border:0;color:#fff;font-size:16px;padding:2px 6px">✕</button></div>
+  <div class="chat-head"><button onclick="closeChatPage()" style="background:none;border:0;color:#fff;font-size:18px;padding:2px 8px 2px 0">←</button>🤖 Admin <span class="dot"></span><span style="font-weight:400;color:#9fb3d1;font-size:13px">အွန်လိုင်း</span><span style="flex:1"></span><button id="callBtn" title="အသံခေါ်မည်" style="background:#22c55e;border:0;color:#fff;font-size:18px;width:40px;height:40px;border-radius:50%;flex:0 0 auto">📞</button><button onclick="closeChatPage()" style="background:none;border:0;color:#fff;font-size:16px;padding:2px 6px">✕</button></div>
+  <div id="callPanel" class="hidden" style="background:#16213e;color:#fff;padding:14px;text-align:center">
+    <div id="callStatus" style="font-weight:700">Admin ကို ခေါ်နေတယ်…</div>
+    <div id="callTimer" style="font-size:22px;margin:6px 0">00:00</div>
+    <div style="display:flex;gap:10px;justify-content:center">
+      <button id="callMute" onclick="toggleCallMute()" style="background:#334155;color:#fff;border:0;border-radius:50%;width:44px;height:44px;font-size:18px">🔊</button>
+      <button id="callEnd" style="background:#e11d48;color:#fff;border:0;border-radius:999px;padding:10px 18px">📞 ဖုန်းချမည်</button>
+    </div>
+  </div>
   <div id="chatMsgs" class="chat-msgs"></div>
   <div class="chat-input"><input id="chatText" placeholder="စာရိုက်ပါ…" maxlength="1000"><button class="primary" id="chatSend">➤</button></div>
+  <audio id="remoteAudio" autoplay playsinline style="display:none"></audio>
 </div>
 <script>
 const $=s=>document.querySelector(s);
@@ -512,6 +521,7 @@ window.openChatPage=()=>{
   chatLastId='';loadChat();chatTimer=setInterval(loadChat,1000); // 1s refresh, not 8s
 };
 window.closeChatPage=()=>{
+  if(typeof endCall==='function'&&callId)endCall('');
   chatOpen=false;
   $('#chatView').classList.add('hidden');
   if(chatTimer){clearInterval(chatTimer);chatTimer=null}
@@ -528,6 +538,92 @@ async function sendChatMsg(){
     inp.value='';loadChat();
   }catch(e){alert(e.message)}
 }
+
+// ---- Voice call with Admin (WebRTC, peer-to-peer audio) ----
+// No recording, no storage: the audio travels directly phone-to-phone.
+// The server only passes the connection info (offer/answer/ICE) via the
+// same 1s polling the chat uses. STUN (Google, free) helps the two phones
+// find each other across networks; on a few mobile networks a call may
+// fail to connect without a TURN relay (not included — see README).
+const CALL_ICE={iceServers:[{urls:'stun:stun.l.google.com:19302'}]};
+let callPc=null, callStream=null, callId=null, callPoll=null, callTick=null, callStart=0, callSentCands=0, callMuted=false;
+function callFmt(s){return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0')}
+function setCallPanel(show){
+  $('#callPanel').classList.toggle('hidden',!show);
+  $('#callBtn').classList.toggle('hidden',show);
+}
+function callCleanup(){
+  if(callPoll){clearInterval(callPoll);callPoll=null}
+  if(callTick){clearInterval(callTick);callTick=null}
+  if(callPc){try{callPc.close()}catch(e){}callPc=null}
+  if(callStream){callStream.getTracks().forEach(t=>t.stop());callStream=null}
+  callId=null;callSentCands=0;callMuted=false;
+  const m=$('#callMute');if(m)m.textContent='🔊';
+  setCallPanel(false);
+}
+async function startCall(){
+  if(callId)return;
+  try{
+    callStream=await navigator.mediaDevices.getUserMedia({audio:true});
+  }catch(e){alert('Microphone ဖွင့်ခွင့် လိုပါတယ် — browser ကို mic ခွင့်ပြုပေးပါ');return}
+  callPc=new RTCPeerConnection(CALL_ICE);
+  callStream.getTracks().forEach(t=>callPc.addTrack(t,callStream));
+  callPc.onicecandidate=e=>{if(e.candidate&&callId)api('/api/call/'+callId+'/candidate',{method:'POST',body:JSON.stringify({candidate:e.candidate})}).catch(()=>{})};
+  callPc.ontrack=e=>{const a=$('#remoteAudio');a.srcObject=e.streams[0];a.play().catch(()=>{})};
+  try{
+    const offer=await callPc.createOffer();
+    await callPc.setLocalDescription(offer);
+    const r=await api('/api/call',{method:'POST',body:JSON.stringify({offer:callPc.localDescription})});
+    if(r.busy){
+      callCleanup();
+      $('#callStatus').textContent='Admin အခြားသူနဲ့ ဖုန်းပြောနေတယ် — စာထားခဲ့လိုက်ပါ';
+      setCallPanel(true);
+      setTimeout(()=>{if(!callId)setCallPanel(false)},4000);
+      return;
+    }
+    callId=r.id;
+    setCallPanel(true);
+    $('#callStatus').textContent='Admin ကို ခေါ်နေတယ်…';
+    $('#callTimer').textContent='00:00';
+    callPoll=setInterval(pollCall,1000);
+  }catch(e){callCleanup();alert('ခေါ်မရဘူး — လိုင်းစစ်ပြီး ပြန်ခေါ်ကြည့်ပါ')}
+}
+async function pollCall(){
+  if(!callId)return;
+  try{
+    const c=await api('/api/call/'+callId);
+    if(c.answer&&callPc&&callPc.signalingState==='have-local-offer'){
+      await callPc.setRemoteDescription(new RTCSessionDescription(c.answer));
+    }
+    (c.candidates||[]).slice(callSentCands).forEach(cd=>{callPc.addIceCandidate(new RTCIceCandidate(cd)).catch(()=>{})});
+    callSentCands=(c.candidates||[]).length;
+    if(c.status==='active'&&!callTick){
+      callStart=Date.now();
+      $('#callStatus').textContent='ဖုန်းပြောနေတယ်';
+      callTick=setInterval(()=>{const t=$('#callTimer');if(t)t.textContent=callFmt(Math.floor((Date.now()-callStart)/1000))},1000);
+    }else if(c.status==='declined'){endCall('Admin က ငြင်းလိုက်တယ်')}
+    else if(c.status==='missed'){endCall('Admin မကိုင်လိုက်ဘူး — စာထားခဲ့လိုက်ပါ')}
+    else if(c.status==='ended'){endCall('ဖုန်းပြီးပြီ')}
+  }catch(e){}
+}
+function endCall(msg){
+  const id=callId;
+  callCleanup();
+  if(id)api('/api/call/'+id+'/end',{method:'POST'}).catch(()=>{});
+  if(msg){
+    $('#callStatus').textContent=msg;
+    setCallPanel(true);
+    setTimeout(()=>{if(!callId)setCallPanel(false)},4000);
+  }
+}
+window.toggleCallMute=()=>{
+  if(!callStream)return;
+  callMuted=!callMuted;
+  callStream.getAudioTracks().forEach(t=>t.enabled=!callMuted);
+  $('#callMute').textContent=callMuted?'🔇':'🔊';
+};
+$('#callBtn').addEventListener('click',startCall);
+$('#callEnd').addEventListener('click',()=>endCall(''));
 
 // ---- Profile ----
 let profile=JSON.parse(localStorage.getItem('profile')||'{}');

@@ -52,6 +52,25 @@ a{color:var(--accent)}
     <button id="adminLogout">Admin မှ ထွက်မည်</button>
   </div>
 </main>
+<!-- Incoming voice call (shown on any tab while the admin is logged in) -->
+<div id="incomingCall" class="hidden" style="position:fixed;left:12px;right:12px;bottom:76px;z-index:50;background:#16213e;color:#fff;border-radius:16px;padding:16px;box-shadow:0 8px 30px rgba(0,0,0,.4);text-align:center">
+  <div style="font-size:18px">📞 <b id="incomingName"></b></div>
+  <div id="incomingPhone" style="color:#9fb3d1"></div>
+  <div style="margin:6px 0">ဖုန်းခေါ်နေတယ်…</div>
+  <div style="display:flex;gap:10px;justify-content:center;margin-top:10px">
+    <button onclick="declineCall()" style="background:#e11d48;color:#fff;border:0;border-radius:999px;padding:10px 20px">✕ ငြင်းမည်</button>
+    <button onclick="acceptCall()" style="background:#22c55e;color:#fff;border:0;border-radius:999px;padding:10px 20px">📞 လက်ခံမည်</button>
+  </div>
+</div>
+<!-- Active call bar -->
+<div id="adminCallBar" class="hidden" style="position:fixed;left:12px;right:12px;bottom:76px;z-index:50;background:#14532d;color:#fff;border-radius:16px;padding:12px 16px;box-shadow:0 8px 30px rgba(0,0,0,.4);text-align:center">
+  <div>📞 <b id="adminCallName"></b> · <span id="adminCallTimer">00:00</span></div>
+  <div style="display:flex;gap:10px;justify-content:center;margin-top:10px">
+    <button id="adminCallMute" onclick="toggleAdminMute()" style="background:#166534;color:#fff;border:0;border-radius:50%;width:44px;height:44px;font-size:18px">🔊</button>
+    <button onclick="endAdminCallUI()" style="background:#e11d48;color:#fff;border:0;border-radius:999px;padding:10px 20px">📞 ဖုန်းချမည်</button>
+  </div>
+</div>
+<audio id="adminRemoteAudio" autoplay playsinline style="display:none"></audio>
 <script>
 const $=s=>document.querySelector(s);
 let adminPass='', adminTab='overview', adminTimer=null, products=[];
@@ -64,10 +83,10 @@ async function loadProducts(){products=await aapi('/api/admin/products')}
 $('#themeBtn').addEventListener('click',()=>document.body.classList.toggle('dark'));
 const ADMIN_TABS=['overview','products','orders','delivery','wallet','topups','chats','users','settings'];
 $('#adminLogin').addEventListener('click',async()=>{
-  try{await api('/api/admin/login',{method:'POST',body:JSON.stringify({passcode:$('#adminPass').value})});adminPass=$('#adminPass').value;$('#adminGate').classList.add('hidden');$('#adminMain').classList.remove('hidden');renderAdminTabs();loadAdmin();adminTimer=setInterval(loadAdmin,10000);}
+  try{await api('/api/admin/login',{method:'POST',body:JSON.stringify({passcode:$('#adminPass').value})});adminPass=$('#adminPass').value;$('#adminGate').classList.add('hidden');$('#adminMain').classList.remove('hidden');renderAdminTabs();loadAdmin();adminTimer=setInterval(loadAdmin,10000);adminIncomingTimer=setInterval(pollIncomingCalls,2000);}
   catch(e){$('#adminLoginMsg').textContent='Passcode မှားနေတယ် / Wrong passcode'}
 });
-$('#adminLogout').addEventListener('click',()=>{adminPass='';clearInterval(adminTimer);$('#adminMain').classList.add('hidden');$('#adminGate').classList.remove('hidden')});
+$('#adminLogout').addEventListener('click',()=>{if(adminCall)endAdminCall();if(adminIncomingTimer){clearInterval(adminIncomingTimer);adminIncomingTimer=null}adminPass='';clearInterval(adminTimer);$('#incomingCall').classList.add('hidden');$('#adminCallBar').classList.add('hidden');$('#adminMain').classList.add('hidden');$('#adminGate').classList.remove('hidden')});
 function renderAdminTabs(){$('#adminTabs').innerHTML=ADMIN_TABS.map(x=>`<button class="${adminTab===x?'active':''}" onclick="setTab('${x}')">${x[0].toUpperCase()+x.slice(1)}</button>`).join('')}
 window.setTab=x=>{adminTab=x;renderAdminTabs();loadAdmin()};
 const ah={'x-admin-passcode':''};
@@ -195,6 +214,91 @@ window.sendAdminChat=async()=>{
   await aapi('/api/admin/chats/'+encodeURIComponent(chatPhone)+'/send',{method:'POST',body:JSON.stringify({text})});
   if(inp)inp.value='';
   adminChatSig='';pollAdminChat();
+};
+
+// ---- Voice calls (admin side; WebRTC, peer-to-peer audio, no recording) ----
+// Incoming calls are polled every 2s on every tab while logged in. While
+// one call is ringing/active the server tells any other caller "busy"
+// (option 1), so the admin never gets a second ringing call mid-call.
+const CALL_ICE={iceServers:[{urls:'stun:stun.l.google.com:19302'}]};
+let adminCall=null, adminPc=null, adminStream=null, adminCallStateTimer=null, adminCallTick=null, adminCallStart=0, adminSentCands=0, adminMuted=false, adminRingingId=null, adminIncomingTimer=null;
+function adminCallFmt(s){return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0')}
+async function pollIncomingCalls(){
+  if(!adminPass||adminCall)return;
+  try{
+    const list=await aapi('/api/admin/calls/incoming');
+    if(list.length){
+      const c=list[0];
+      if(adminRingingId!==c.id){
+        adminRingingId=c.id;
+        $('#incomingName').textContent=c.name||c.phone;
+        $('#incomingPhone').textContent=c.phone;
+        $('#incomingCall').classList.remove('hidden');
+        if(navigator.vibrate)navigator.vibrate([200,100,200,100,200]);
+      }
+    }else if(adminRingingId){adminRingingId=null;$('#incomingCall').classList.add('hidden')}
+  }catch(e){}
+}
+window.acceptCall=async()=>{
+  const id=adminRingingId;if(!id)return;
+  try{
+    const list=await aapi('/api/admin/calls/incoming');
+    const c=list.find(x=>x.id===id);
+    if(!c){adminRingingId=null;$('#incomingCall').classList.add('hidden');return}
+    adminStream=await navigator.mediaDevices.getUserMedia({audio:true});
+    adminPc=new RTCPeerConnection(CALL_ICE);
+    adminStream.getTracks().forEach(t=>adminPc.addTrack(t,adminStream));
+    adminPc.onicecandidate=e=>{if(e.candidate&&adminCall)aapi('/api/admin/calls/'+adminCall+'/candidate',{method:'POST',body:JSON.stringify({candidate:e.candidate})}).catch(()=>{})};
+    adminPc.ontrack=e=>{const a=$('#adminRemoteAudio');a.srcObject=e.streams[0];a.play().catch(()=>{})};
+    await adminPc.setRemoteDescription(new RTCSessionDescription(c.offer));
+    const answer=await adminPc.createAnswer();
+    await adminPc.setLocalDescription(answer);
+    await aapi('/api/admin/calls/'+id+'/answer',{method:'POST',body:JSON.stringify({answer:adminPc.localDescription})});
+    adminCall=id;adminRingingId=null;
+    $('#incomingCall').classList.add('hidden');
+    $('#adminCallBar').classList.remove('hidden');
+    $('#adminCallName').textContent=c.name||c.phone;
+    adminCallStart=Date.now();
+    $('#adminCallTimer').textContent='00:00';
+    adminCallStateTimer=setInterval(pollAdminCallState,1000);
+    adminCallTick=setInterval(()=>{const t=$('#adminCallTimer');if(t)t.textContent=adminCallFmt(Math.floor((Date.now()-adminCallStart)/1000))},1000);
+  }catch(e){
+    alert('Microphone ဖွင့်ခွင့် လိုပါတယ်');
+    if(adminStream){adminStream.getTracks().forEach(t=>t.stop());adminStream=null}
+    if(adminPc){try{adminPc.close()}catch(_){}adminPc=null}
+  }
+};
+window.declineCall=async()=>{
+  const id=adminRingingId;if(!id)return;
+  await aapi('/api/admin/calls/'+id+'/decline',{method:'POST'}).catch(()=>{});
+  adminRingingId=null;$('#incomingCall').classList.add('hidden');
+};
+async function pollAdminCallState(){
+  if(!adminCall)return;
+  try{
+    const c=await aapi('/api/admin/calls/'+adminCall);
+    (c.candidates||[]).slice(adminSentCands).forEach(cd=>{adminPc.addIceCandidate(new RTCIceCandidate(cd)).catch(()=>{})});
+    adminSentCands=(c.candidates||[]).length;
+    if(c.status==='ended'||c.status==='declined'||c.status==='missed')endAdminCall();
+  }catch(e){}
+}
+function endAdminCall(){
+  const id=adminCall;
+  if(adminCallStateTimer){clearInterval(adminCallStateTimer);adminCallStateTimer=null}
+  if(adminCallTick){clearInterval(adminCallTick);adminCallTick=null}
+  if(adminPc){try{adminPc.close()}catch(e){}adminPc=null}
+  if(adminStream){adminStream.getTracks().forEach(t=>t.stop());adminStream=null}
+  adminCall=null;adminSentCands=0;adminMuted=false;
+  const m=$('#adminCallMute');if(m)m.textContent='🔊';
+  $('#adminCallBar').classList.add('hidden');
+  if(id)aapi('/api/admin/calls/'+id+'/end',{method:'POST'}).catch(()=>{});
+}
+window.endAdminCallUI=()=>endAdminCall();
+window.toggleAdminMute=()=>{
+  if(!adminStream)return;
+  adminMuted=!adminMuted;
+  adminStream.getAudioTracks().forEach(t=>t.enabled=!adminMuted);
+  $('#adminCallMute').textContent=adminMuted?'🔇':'🔊';
 };
 window.saveSettings=async()=>{await aapi('/api/admin/settings',{method:'PATCH',body:JSON.stringify({recipientName:$('#sName').value,recipientPhone:$('#sPhone').value,freeThreshold:Number($('#sFree').value),otherTownshipFee:Number($('#sOther').value),announcement:$('#sAnnounce').value})});$('#sMsg').textContent='Saved ✅'};
 window.resetUserPass=async phone=>{
