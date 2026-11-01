@@ -484,8 +484,12 @@ async function loadMyOrders(){
 let chatOpen=false, chatTimer=null, chatLastId='';
 function chatTime(d){const x=new Date(d||Date.now());return x.getHours()+':'+String(x.getMinutes()).padStart(2,'0')}
 function renderChatMsgs(list){
-  $('#chatMsgs').innerHTML=list.map(m=>`<div class="chat-msg ${m.sender==='customer'?'me':'them'}">${esc(m.text)}<span class="tm">${chatTime(m.date)}</span></div>`).join('')||'<p class="muted" style="color:#9fb3d1">မေးစရာ ရှိရင် ဒီကနေ စာပို့လိုက်ပါ — Admin က ပြန်ဖြေပေးမယ်။</p>';
-  $('#chatMsgs').scrollTop=$('#chatMsgs').scrollHeight;
+  const box=$('#chatMsgs');
+  // Only auto-scroll if the user is already near the bottom, so reading
+  // old messages (or typing) is never yanked away by a refresh.
+  const nearBottom=box.scrollHeight-box.scrollTop-box.clientHeight<80;
+  box.innerHTML=list.map(m=>`<div class="chat-msg ${m.sender==='customer'?'me':'them'}">${esc(m.text)}<span class="tm">${chatTime(m.date)}</span></div>`).join('')||'<p class="muted" style="color:#9fb3d1">မေးစရာ ရှိရင် ဒီကနေ စာပို့လိုက်ပါ — Admin က ပြန်ဖြေပေးမယ်။</p>';
+  if(nearBottom)box.scrollTop=box.scrollHeight;
 }
 async function loadChat(){
   try{
@@ -505,7 +509,7 @@ async function loadChatUnread(){
 window.openChatPage=()=>{
   chatOpen=true;
   $('#chatView').classList.remove('hidden');
-  chatLastId='';loadChat();chatTimer=setInterval(loadChat,8000);
+  chatLastId='';loadChat();chatTimer=setInterval(loadChat,1000); // 1s refresh, not 8s
 };
 window.closeChatPage=()=>{
   chatOpen=false;
