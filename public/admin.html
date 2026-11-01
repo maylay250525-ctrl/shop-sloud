@@ -7,7 +7,8 @@
 <style>
 /* TailAdmin-style UI (light): clean white cards on a soft grey page,
    green accent to match the shop, pill tabs and badges, soft shadows.
-   UI ONLY — no function, API or data logic is changed in this file. */
+   Admin UI improvements (scrollable tabs/tables, 7-day chart, search)
+   are client-side UI only — no API, server, shop or data logic changed. */
 :root{--bg:#f3f5f9;--card:#fff;--text:#1e293b;--muted:#64748b;--accent:#0d7a4f;--accent-soft:#dcf0e6;--line:#e6eaf1;--shadow:0 1px 3px rgba(15,23,42,.06),0 1px 2px rgba(15,23,42,.04);--danger:#dc2626;--amber-bg:#fef3c7;--amber-text:#92400e;--green-bg:#dcfce7;--green-text:#166534;--red-bg:#fee2e2;--red-text:#991b1b}
 body.dark{--bg:#0f172a;--card:#1e293b;--text:#f1f5f9;--muted:#94a3b8;--line:#334155;--accent-soft:#14532d;--shadow:0 1px 3px rgba(0,0,0,.4);--amber-bg:#78350f;--amber-text:#fde68a;--green-bg:#14532d;--green-text:#bbf7d0;--red-bg:#7f1d1d;--red-text:#fecaca}
 *{box-sizing:border-box}
@@ -23,8 +24,9 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
 main{max-width:960px;margin:0 auto;padding:16px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;margin-bottom:16px;box-shadow:var(--shadow)}
 .card h3{margin:0 0 12px;font-size:17px;font-weight:700}
-.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
-.tabs button{border-radius:999px;padding:9px 16px;background:var(--card)}
+.tabs{display:flex;gap:8px;flex-wrap:nowrap;margin-bottom:16px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:2px}
+.tabs::-webkit-scrollbar{display:none}
+.tabs button{border-radius:999px;padding:9px 16px;background:var(--card);flex:0 0 auto;white-space:nowrap}
 .tabs button.active{background:var(--accent);color:#fff;border-color:var(--accent);box-shadow:0 2px 8px rgba(13,122,79,.3)}
 table{width:100%;border-collapse:collapse;font-size:14px}
 th{font-size:12px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);font-weight:700}
@@ -44,6 +46,18 @@ a{color:var(--accent);text-decoration:none;font-weight:600}
 .stat{background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:14px}
 .stat-label{display:block;font-size:13px;color:var(--muted);font-weight:600;margin-bottom:6px}
 .stat-num{font-size:24px;font-weight:800;letter-spacing:-.5px}
+/* Horizontal scroll wrapper for wide tables (Products / Top-ups / Users):
+   on a phone the table keeps its columns and scrolls sideways instead
+   of being squeezed. */
+.table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.table-scroll table{min-width:620px}
+/* 7-day revenue chart (Overview): plain div bars, no library. */
+.chart{display:flex;gap:6px;height:150px}
+.chart-col{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end}
+.chart-val{font-size:11px;font-weight:700;margin-bottom:4px;white-space:nowrap}
+.chart-bar{width:70%;max-width:34px;background:var(--accent);border-radius:6px 6px 0 0;min-height:3px}
+.chart-lbl{font-size:11px;color:var(--muted);margin-top:6px}
+.chart-lbl.today{color:var(--accent);font-weight:800}
 </style>
 </head>
 <body>
@@ -158,6 +172,57 @@ function setAdminContent(html){
   const snap=snapshotAdminInputs();
   $('#adminContent').innerHTML=html;
   restoreAdminInputs(snap);
+  reapplyAdminFilters();
+}
+// Admin search (Fix 3): Products and Orders have a search box. Filtering
+// hides rows/cards in the DOM only (no re-render, so focus never breaks),
+// and matches a data-search attribute — NOT textContent, because each row
+// contains a <select> whose options would match every query.
+// The 10s refresh re-renders the tab, so the filter is re-applied here
+// after every render (the search box value itself is restored by the
+// snapshot above).
+function reapplyAdminFilters(){
+  if(document.getElementById('prodSearch'))filterAdminTable('prodSearch','prodTable');
+  if(document.getElementById('orderSearch'))filterAdminOrders();
+}
+window.filterAdminTable=(inputId,tableId)=>{
+  const q=((document.getElementById(inputId)||{}).value||'').trim().toLowerCase();
+  const tbl=document.getElementById(tableId);if(!tbl)return;
+  tbl.querySelectorAll('tr[data-search]').forEach(r=>{
+    r.style.display=(!q||(r.dataset.search||'').includes(q))?'':'none';
+  });
+};
+window.filterAdminOrders=()=>{
+  const q=((document.getElementById('orderSearch')||{}).value||'').trim().toLowerCase();
+  document.querySelectorAll('#adminContent .order-card').forEach(el=>{
+    el.style.display=(!q||(el.dataset.search||'').includes(q))?'':'none';
+  });
+};
+// 7-day revenue chart (Overview): aggregate non-cancelled orders by the
+// admin phone's local calendar day (order dates are ISO UTC strings).
+function weekChart(orders){
+  const days=[];
+  const now=new Date();
+  for(let i=6;i>=0;i--){
+    const d=new Date(now.getFullYear(),now.getMonth(),now.getDate()-i);
+    days.push({key:d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate(),full:(d.getMonth()+1)+'/'+d.getDate(),label:d.getDate(),today:i===0,rev:0,count:0});
+  }
+  (orders||[]).forEach(o=>{
+    if(o.status==='cancelled')return;
+    const d=new Date(o.date||0);
+    const k=d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate();
+    const day=days.find(x=>x.key===k);
+    if(day){day.rev+=Number(o.total)||0;day.count++;}
+  });
+  const max=Math.max(...days.map(d=>d.rev),1);
+  const total=days.reduce((s,d)=>s+d.rev,0);
+  const count=days.reduce((s,d)=>s+d.count,0);
+  const bars=days.map(d=>{
+    const h=Math.max(3,Math.round(d.rev/max*90));
+    const v=d.rev>=1000?Math.round(d.rev/1000)+'k':String(d.rev);
+    return `<div class="chart-col" title="${esc(d.full)} · ${fmt(d.rev)} · ${d.count} အော်ဒါ"><div class="chart-val">${v}</div><div class="chart-bar" style="height:${h}px"></div><div class="chart-lbl${d.today?' today':''}">${d.label}</div></div>`;
+  }).join('');
+  return `<h3>📊 နောက်ဆုံး 7 ရက် ရောင်းအား</h3><div class="chart">${bars}</div><p class="muted">7 ရက် စုစုပေါင်း ${fmt(total)} · ${count} အော်ဒါ</p>`;
 }
 async function loadAdmin(){
   if(!adminPass)return;
@@ -168,17 +233,18 @@ async function loadAdmin(){
     if(adminTab==='overview'){
       const o=await aapi('/api/admin/overview');
       const chats=await aapi('/api/admin/chats');
+      const orders=await aapi('/api/admin/orders');
       const unreadChats=chats.reduce((s,c)=>s+(c.unread||0),0);
-      setAdminContent(`<div class="card"><div class="stats"><div class="stat"><span class="stat-label">📦 Products</span><span class="stat-num">${o.products}</span></div><div class="stat"><span class="stat-label">🧾 Orders</span><span class="stat-num">${o.orders}</span></div><div class="stat"><span class="stat-label">⏳ Pending orders</span><span class="stat-num">${o.pendingOrders}</span></div><div class="stat"><span class="stat-label">💰 Pending top-ups</span><span class="stat-num">${o.pendingTopups}</span></div><div class="stat"><span class="stat-label">💵 Revenue</span><span class="stat-num">${fmt(o.revenue)}</span></div><div class="stat"><span class="stat-label">💬 Unread chats</span><span class="stat-num">${unreadChats}</span></div></div><h3>Low stock</h3>${o.lowStock.map(p=>`<div>${esc(p.name)} — ${p.stock}</div>`).join('')||'—'}</div>`);
+      setAdminContent(`<div class="card"><div class="stats"><div class="stat"><span class="stat-label">📦 Products</span><span class="stat-num">${o.products}</span></div><div class="stat"><span class="stat-label">🧾 Orders</span><span class="stat-num">${o.orders}</span></div><div class="stat"><span class="stat-label">⏳ Pending orders</span><span class="stat-num">${o.pendingOrders}</span></div><div class="stat"><span class="stat-label">💰 Pending top-ups</span><span class="stat-num">${o.pendingTopups}</span></div><div class="stat"><span class="stat-label">💵 Revenue</span><span class="stat-num">${fmt(o.revenue)}</span></div><div class="stat"><span class="stat-label">💬 Unread chats</span><span class="stat-num">${unreadChats}</span></div></div>${weekChart(orders)}<h3>Low stock</h3>${o.lowStock.map(p=>`<div>${esc(p.name)} — ${p.stock}</div>`).join('')||'—'}</div>`);
     }else if(adminTab==='products'){
       await loadProducts();
       setAdminContent(`<div class="card"><h3>Add product</h3><input id="npName" placeholder="Name (Myanmar)"><input id="npPrice" type="number" placeholder="Price (Ks)"><input id="npStock" type="number" placeholder="Stock"><label class="muted">အမျိုးအစား (Category)</label><select id="npCat"><option>စားသောက်ကုန်</option><option>အသီးအနှံ</option><option>အသား/ငါး</option><option>အိမ်သုံးပစ္စည်း</option><option>အခြား</option></select><label class="muted">ပုံ (Photo)</label><input id="npImage" type="file" accept="image/*" onchange="newProductImagePicked(this)"><img id="npPreview" class="hidden" style="max-width:120px;border-radius:8px"><button class="primary" onclick="addProduct()">Add</button></div>`+
-      `<div class="card"><table><tr><th>ပုံ</th><th>Name</th><th>အမျိုးအစား</th><th>Price</th><th>Stock</th><th></th></tr>${products.map(p=>`<tr><td>${p.image?`<img src="${esc(p.image)}" style="width:48px;height:48px;object-fit:cover;border-radius:8px">`:`<span class="muted">—</span>`}<br><label style="font-size:12px;cursor:pointer">🖼️ ပြောင်းမည်<input type="file" accept="image/*" style="display:none" onchange="changeProductImage('${p.id}',this)"></label></td><td>${esc(p.name)}</td><td><select style="width:110px" onchange="editProductCategory('${p.id}',this.value)">${['စားသောက်ကုန်','အသီးအနှံ','အသား/ငါး','အိမ်သုံးပစ္စည်း','အခြား'].map(c=>`<option ${p.category===c?'selected':''}>${c}</option>`).join('')}</select></td><td><input type="number" value="${p.price}" onchange="editProduct('${p.id}','price',this.value)"></td><td><input type="number" value="${p.stock}" onchange="editProduct('${p.id}','stock',this.value)"></td><td><button onclick="delProduct('${p.id}')">✕</button></td></tr>`).join('')}</table></div>`);
+      `<div class="card"><input id="prodSearch" placeholder="🔍 ပစ္စည်း ရှာမယ် — နာမည် / အမျိုးအစား" oninput="filterAdminTable('prodSearch','prodTable')"><div class="table-scroll"><table id="prodTable"><tr><th>ပုံ</th><th>Name</th><th>အမျိုးအစား</th><th>Price</th><th>Stock</th><th></th></tr>${products.map(p=>`<tr data-search="${esc((p.name+' '+(p.category||'')).toLowerCase())}"><td>${p.image?`<img src="${esc(p.image)}" style="width:48px;height:48px;object-fit:cover;border-radius:8px">`:`<span class="muted">—</span>`}<br><label style="font-size:12px;cursor:pointer">🖼️ ပြောင်းမည်<input type="file" accept="image/*" style="display:none" onchange="changeProductImage('${p.id}',this)"></label></td><td>${esc(p.name)}</td><td><select style="width:110px" onchange="editProductCategory('${p.id}',this.value)">${['စားသောက်ကုန်','အသီးအနှံ','အသား/ငါး','အိမ်သုံးပစ္စည်း','အခြား'].map(c=>`<option ${p.category===c?'selected':''}>${c}</option>`).join('')}</select></td><td><input type="number" value="${p.price}" onchange="editProduct('${p.id}','price',this.value)"></td><td><input type="number" value="${p.stock}" onchange="editProduct('${p.id}','stock',this.value)"></td><td><button onclick="delProduct('${p.id}')">✕</button></td></tr>`).join('')}</table></div></div>`);
       if(newProductImage){const pv=$('#npPreview');if(pv){pv.src=newProductImage;pv.classList.remove('hidden')}}
     }else if(adminTab==='orders'){
       const list=await aapi('/api/admin/orders');
-      setAdminContent(`<div class="card">${list.map(o=>`
-      <div style="border-bottom:1px solid #eee;padding:12px 0">
+      setAdminContent(`<div class="card"><input id="orderSearch" placeholder="🔍 အော်ဒါ ရှာမယ် — နံပါတ် / နာမည် / ဖုန်း / မြို့နယ်" oninput="filterAdminOrders()">${list.map(o=>`
+      <div class="order-card" data-search="${esc((o.id+' '+o.customerName+' '+o.phone+' '+o.township).toLowerCase())}" style="border-bottom:1px solid #eee;padding:12px 0">
         <div class="row"><b>${o.id}</b><span class="muted">${(o.date||'').slice(0,10)} ${(o.date||'').slice(11,16)}</span>
         <select style="width:150px" onchange="setOrderStatus('${o.id}',this.value)">${['pending','confirmed','delivering','delivered','cancelled'].map(s=>`<option ${o.status===s?'selected':''}>${s}</option>`).join('')}</select></div>
         <div>${esc(o.customerName)} · ${esc(o.phone)}</div>
@@ -194,7 +260,7 @@ async function loadAdmin(){
       setAdminContent(`<div class="card">${list.map(w=>`<div style="border-bottom:1px solid #eee;padding:10px 0"><b>${esc(w.phone)}</b> — <b>${fmt(w.balance)}</b><div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><input id="wa-${esc(w.phone)}" type="number" placeholder="ပမာဏ (Ks)" style="width:120px"><input id="wn-${esc(w.phone)}" placeholder="မှတ်ချက် (ဥပမာ ဆိုင်မှ လက်ဆောင်ငွေ)" style="flex:1;min-width:140px"><button class="primary" onclick="walletAdjust('${esc(w.phone)}','credit')">➕ ငွေထည့်မယ်</button><button class="warn" onclick="walletAdjust('${esc(w.phone)}','debit')">➖ ငွေထုတ်မယ်</button></div><div id="wam-${esc(w.phone)}" class="muted"></div></div>`).join('')||'—'}</div>`);
     }else if(adminTab==='topups'){
       const list=await aapi('/api/admin/topups');
-      setAdminContent(`<div class="card"><table><tr><th>ID</th><th>Sender</th><th>Amount</th><th>Txn</th><th>Status</th><th></th></tr>${list.map(x=>`<tr><td>${x.id}</td><td>${esc(x.senderName)}<br><span class="muted">${esc(x.senderPhone)}</span></td><td>${fmt(x.amount)}<br><span class="muted">${x.method}</span></td><td>${esc(x.transferId)}</td><td><span class="badge ${x.status}">${x.status}</span></td><td>${x.status==='pending'?`<button class="primary" onclick="topupAct('${x.id}','approve')">Approve</button> <button class="warn" onclick="topupAct('${x.id}','reject')">Reject</button>`:''}</td></tr>`).join('')}</table></div>`);
+      setAdminContent(`<div class="card"><div class="table-scroll"><table><tr><th>ID</th><th>Sender</th><th>Amount</th><th>Txn</th><th>Status</th><th></th></tr>${list.map(x=>`<tr><td>${x.id}</td><td>${esc(x.senderName)}<br><span class="muted">${esc(x.senderPhone)}</span></td><td>${fmt(x.amount)}<br><span class="muted">${x.method}</span></td><td>${esc(x.transferId)}</td><td><span class="badge ${x.status}">${x.status}</span></td><td>${x.status==='pending'?`<button class="primary" onclick="topupAct('${x.id}','approve')">Approve</button> <button class="warn" onclick="topupAct('${x.id}','reject')">Reject</button>`:''}</td></tr>`).join('')}</table></div></div>`);
     }else if(adminTab==='chats'){
       // Customer chats: list of conversations, then one open conversation.
       // While a conversation is open it polls every 1s and ONLY the
@@ -218,7 +284,7 @@ async function loadAdmin(){
       }
     }else if(adminTab==='users'){
       const list=await aapi('/api/admin/users');
-      setAdminContent(`<div class="card"><table><tr><th>Name</th><th>Phone</th><th>Joined</th><th>Reset password</th><th></th></tr>${list.map(u=>`<tr><td>${esc(u.name)}</td><td>${esc(u.phone)}</td><td class="muted">${(u.createdAt||'').slice(0,10)}</td><td><input type="text" id="rp-${esc(u.phone)}" placeholder="Password အသစ်" style="width:130px;display:inline-block"> <button onclick="resetUserPass('${esc(u.phone)}')">Reset</button></td><td><button onclick="delUser('${esc(u.phone)}')">✕</button></td></tr>`).join('')||'<tr><td colspan="5">—</td></tr>'}</table><p class="muted">Password မေ့သွားတဲ့ ဝယ်သူကို ဒီကနေ password အသစ် ပေးလို့ရတယ် — ပေးပြီးရင် ဝယ်သူက Profile မှာ သူ့ဘာသာ ပြန်ချိန်းနိုင်တယ်။</p></div>`);
+      setAdminContent(`<div class="card"><div class="table-scroll"><table><tr><th>Name</th><th>Phone</th><th>Joined</th><th>Reset password</th><th></th></tr>${list.map(u=>`<tr><td>${esc(u.name)}</td><td>${esc(u.phone)}</td><td class="muted">${(u.createdAt||'').slice(0,10)}</td><td><input type="text" id="rp-${esc(u.phone)}" placeholder="Password အသစ်" style="width:130px;display:inline-block"> <button onclick="resetUserPass('${esc(u.phone)}')">Reset</button></td><td><button onclick="delUser('${esc(u.phone)}')">✕</button></td></tr>`).join('')||'<tr><td colspan="5">—</td></tr>'}</table></div><p class="muted">Password မေ့သွားတဲ့ ဝယ်သူကို ဒီကနေ password အသစ် ပေးလို့ရတယ် — ပေးပြီးရင် ဝယ်သူက Profile မှာ သူ့ဘာသာ ပြန်ချိန်းနိုင်တယ်။</p></div>`);
     }else if(adminTab==='settings'){
       const s=await aapi('/api/admin/settings');
       setAdminContent(`<div class="card"><h3>Recipient (KPay / WavePay)</h3><label class="muted">Admin နာမည်</label><input id="sName" value="${esc(s.recipientName)}"><label class="muted">Admin ဖုန်း</label><input id="sPhone" value="${esc(s.recipientPhone)}"><label class="muted">ပို့ခ အခမဲ့ ဖြစ်မည့် ပမာဏ (Ks) — အော်ဒါ ဒီပမာဏ ပြည့်ရင် ပို့ခ 0 Ks</label><input id="sFree" type="number" value="${s.freeThreshold}"><label class="muted">အခြားမြို့နယ် ပို့ခ (Ks)</label><input id="sOther" type="number" value="${s.otherTownshipFee}"><label class="muted">ကြေညာချက် — ဆိုင်အပေါ်ဆုံးမှာ ညာကနေ ဘယ်ကို ပြေးနေတဲ့ စာတန်း (ဗလာထားရင် မပေါ်ဘူး)</label><textarea id="sAnnounce" rows="2">${esc(s.announcement||'')}</textarea><label style="display:block;margin-top:8px"><input type="checkbox" id="sAi" ${s.aiEnabled===false?'':'checked'}> ✨ AI အကြံပြုချက် ဖွင့်မယ် (Chats မှာ Admin ကို အဖြေ စဉ်းစားပေးတာ)</label><button class="primary" onclick="saveSettings()">Save</button><div id="sMsg"></div></div>`+
