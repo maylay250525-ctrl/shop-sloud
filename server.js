@@ -146,6 +146,21 @@ app.post('/api/auth/change-password', requireAuth, ah(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// Set or clear my own profile photo (logged in). The phone always comes
+// from the login token, so a customer can only change their own photo.
+// The photo is a small (160px) JPEG data URL from the shop; it is stored
+// on the user's record so the Admin can see it in Chats. Empty string
+// clears it. Max ~300KB of data URL (a 160px JPEG is only ~5-15KB).
+app.post('/api/profile/photo', requireAuth, ah(async (req, res) => {
+  const photo = String((req.body || {}).photo || '');
+  if (photo && (!photo.startsWith('data:image/') || photo.length > 300000)) {
+    return res.status(400).json({ error: 'invalid photo' });
+  }
+  const user = await store.updateUserPhoto(req.user.phone, photo);
+  if (!user) return res.status(401).json({ error: 'login required' });
+  res.json({ ok: true });
+}));
+
 // Public shop contact — shown on the login screen so a customer who forgot
 // their password knows whom to call. This is the same payment contact every
 // logged-in customer already sees in the top-up flow.
@@ -553,6 +568,24 @@ app.post('/api/admin/chats/:phone/send', requireAdmin, ah(async (req, res) => {
 }));
 
 app.get('/api/admin/wallets', requireAdmin, ah(async (req, res) => res.json(await store.listWallets())));
+
+// Admin manually adds or deducts money from a user's wallet, with a note.
+// The note shows in the customer's wallet ledger. A deduction is refused
+// when the balance is not enough — the balance can never go negative.
+app.post('/api/admin/wallets/:phone/adjust', requireAdmin, ah(async (req, res) => {
+  const phone = decodeURIComponent(req.params.phone);
+  const { type, amount, note } = req.body || {};
+  const amt = Number(amount);
+  if (type !== 'credit' && type !== 'debit') return res.status(400).json({ error: 'type must be credit or debit' });
+  if (!Number.isFinite(amt) || amt <= 0 || amt > 10000000) return res.status(400).json({ error: 'invalid amount' });
+  const w = await store.getWallet(phone);
+  if (type === 'debit' && w.balance < amt) return res.status(400).json({ error: 'insufficient balance', balance: w.balance });
+  const cleanNote = String(note || '').trim().slice(0, 200);
+  w.balance += type === 'credit' ? amt : -amt;
+  w.ledger.push({ type: type === 'credit' ? 'admin_credit' : 'admin_debit', amount: amt, transferId: null, date: new Date().toISOString(), note: cleanNote || (type === 'credit' ? 'Admin က ငွေထည့်ပေးတာ' : 'Admin က ငွေထုတ်တာ') });
+  await store.saveWallet(phone, w);
+  res.json({ phone, balance: w.balance });
+}));
 
 // ---------------------------------------------------------------------------
 // Admin AI reply suggestions (Gemini free API, admin-only).
