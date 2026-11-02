@@ -321,7 +321,8 @@ async function loadAdmin(){
       const s=await aapi('/api/admin/settings');
       setAdminContent(`<div class="card"><h3>Recipient (KPay / WavePay)</h3><label class="muted">Admin နာမည်</label><input id="sName" value="${esc(s.recipientName)}"><label class="muted">Admin ဖုန်း</label><input id="sPhone" value="${esc(s.recipientPhone)}"><label class="muted">ပို့ခ အခမဲ့ ဖြစ်မည့် ပမာဏ (Ks) — အော်ဒါ ဒီပမာဏ ပြည့်ရင် ပို့ခ 0 Ks</label><input id="sFree" type="number" value="${s.freeThreshold}"><label class="muted">အခြားမြို့နယ် ပို့ခ (Ks)</label><input id="sOther" type="number" value="${s.otherTownshipFee}"><label class="muted">ကြေညာချက် — ဆိုင်အပေါ်ဆုံးမှာ ညာကနေ ဘယ်ကို ပြေးနေတဲ့ စာတန်း (ဗလာထားရင် မပေါ်ဘူး)</label><textarea id="sAnnounce" rows="2">${esc(s.announcement||'')}</textarea><label style="display:block;margin-top:8px"><input type="checkbox" id="sAi" ${s.aiEnabled===false?'':'checked'}> ✨ AI အကြံပြုချက် ဖွင့်မယ် (Chats မှာ Admin ကို အဖြေ စဉ်းစားပေးတာ)</label><button class="primary" onclick="saveSettings()">Save</button><div id="sMsg"></div></div>`+
       `<div class="card"><h3>⚠️ User data ဖျက်မယ်</h3><p class="muted">အော်ဒါ၊ ငွေဖြည့်၊ wallet၊ အကောင့်များ အားလုံး ဖျက်မယ်။ ပစ္စည်း၊ ပို့ခ၊ setting တွေ မပျက်ဘူး။</p><button class="warn" onclick="resetUserData()">ဖျက်မည်</button><div id="resetMsg"></div></div>`+
-      `<div class="card"><h3>💾 Backup ထုတ်မယ်</h3><p class="muted">ပစ္စည်း၊ အော်ဒါ၊ ငွေဖြည့်၊ wallet၊ အကောင့်၊ chat အားလုံးကို file တစ်ခု အဖြစ် ထုတ်မယ်။ ဖျက်တာ မလုပ်ခင် ဒါကို နှိပ်ပြီး file ကို သိမ်းထားပါ — file ထဲမှာ password တွေ ပါလို့ ဘယ်သူ့ကိုမှ မပေးပါနဲ့။</p><button class="primary" onclick="downloadBackup()">💾 Backup ထုတ်မည်</button><div id="backupMsg"></div></div>`);
+      `<div class="card"><h3>💾 Backup ထုတ်မယ်</h3><p class="muted">ပစ္စည်း၊ အော်ဒါ၊ ငွေဖြည့်၊ wallet၊ အကောင့်၊ chat အားလုံးကို file တစ်ခု အဖြစ် ထုတ်မယ်။ ဖျက်တာ မလုပ်ခင် ဒါကို နှိပ်ပြီး file ကို သိမ်းထားပါ — file ထဲမှာ password တွေ ပါလို့ ဘယ်သူ့ကိုမှ မပေးပါနဲ့။</p><button class="primary" onclick="downloadBackup()">💾 Backup ထုတ်မည်</button><div id="backupMsg"></div></div>`+
+      `<div class="card"><h3>📧 Gmail (OTP ပို့ရန်)</h3><p class="muted">${s.gmailConnected?'✅ ချိတ်ထားပြီ — OTP အီးမေးလ် ပို့နိုင်ပြီ။':'❌ မချိတ်ရသေးဘူး — အောက်က ခလုတ်ကို နှိပ်ပြီး Google မှာ Allow လုပ်ပါ။'}</p><button class="primary" onclick="linkGmail()">🔗 Gmail ချိတ်မည်</button><div id="gmailMsg"></div></div>`);
     }
   }catch(e){setAdminContent(`<div class="notice">❌ ${esc(e.message)}</div>`)}
 }
@@ -514,6 +515,7 @@ window.toggleAdminMute=()=>{
   $('#adminCallMute').textContent=adminMuted?'🔇':'🔊';
 };
 window.saveSettings=async()=>{await aapi('/api/admin/settings',{method:'PATCH',body:JSON.stringify({recipientName:$('#sName').value,recipientPhone:$('#sPhone').value,freeThreshold:Number($('#sFree').value),otherTownshipFee:Number($('#sOther').value),announcement:$('#sAnnounce').value,aiEnabled:$('#sAi').checked})});$('#sMsg').textContent='Saved ✅'};
+window.linkGmail=async()=>{const m=$('#gmailMsg');try{const r=await aapi('/api/admin/gmail-auth-url');if(r.url){window.open(r.url,'_blank');if(m)m.textContent='Google စာမျက်နှာ ပွင့်သွားပါပြီ — Allow ကို နှိပ်ပြီး ပြီးရင် ဒီ Settings ကို ပြန်ဖွင့်ကြည့်ပါ။';}}catch(e){if(m)m.textContent=e.message==='google_not_configured'?'❌ Google login ပြင်ဆင်မှု မပြည့်စုံသေးပါ':'❌ '+(e.message||'မရခဲ့ပါ');}};
 window.resetUserPass=async phone=>{
   const el=document.getElementById('rp-'+phone);
   const v=el?el.value.trim():'';
