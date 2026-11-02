@@ -435,7 +435,17 @@ window.closeAdminPhotoViewer=()=>{const v=$('#adminPhotoViewer');if(v)v.classLis
 // Incoming calls are polled every 2s on every tab while logged in. While
 // one call is ringing/active the server tells any other caller "busy"
 // (option 1), so the admin never gets a second ringing call mid-call.
-const CALL_ICE={iceServers:[{urls:'stun:stun.l.google.com:19302'}]};
+// ICE servers: Google STUN for direct calls, plus the free OpenRelay
+// TURN (Metered) as a relay fallback — without TURN, phones behind
+// symmetric NAT / mobile CGNAT can signal and start the timer but no
+// audio flows (found 2026-11-02: timer ran, no sound). TURN over TCP/TLS
+// on 443 is included for networks that block UDP. If the relay is ever
+// unreachable the direct STUN path is still tried first.
+const CALL_ICE={iceServers:[
+  {urls:'stun:stun.l.google.com:19302'},
+  {urls:['turn:openrelay.metered.ca:80','turn:openrelay.metered.ca:443','turn:openrelay.metered.ca:443?transport=tcp'],username:'openrelayproject',credential:'openrelayproject'},
+  {urls:'turns:openrelay.metered.ca:443',username:'openrelayproject',credential:'openrelayproject'}
+]};
 let adminCall=null, adminPc=null, adminStream=null, adminCallStateTimer=null, adminCallTick=null, adminCallStart=0, adminSentCands=0, adminMuted=false, adminRingingId=null, adminIncomingTimer=null;
 function adminCallFmt(s){return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0')}
 async function pollIncomingCalls(){
