@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ဈေးဆိုင်</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
 :root{--bg:#faf6ee;--card:#fff;--text:#222;--muted:#8a8378;--accent:#0e7a4d;--accent2:#f59e0b;--line:#eee5d5;--shadow:0 2px 14px rgba(60,45,20,.07)}
 body.dark{--bg:#16181d;--card:#23262e;--text:#f0f0f0;--muted:#9aa0ae;--line:#343842;--shadow:0 2px 14px rgba(0,0,0,.35)}
@@ -100,6 +101,17 @@ body.dark #bottomNav button.active{background:#1d3a2c}
       <input id="liPass" type="password" placeholder="Password">
       <button class="primary" id="loginBtn" style="width:100%">ဝင်မည်</button>
       <div id="loginErr" class="auth-err"></div>
+      <div id="googleBox" class="hidden" style="margin-top:10px">
+        <div style="text-align:center;color:var(--muted);font-size:13px;margin:6px 0">— သို့မဟုတ် —</div>
+        <div id="gBtn" style="display:flex;justify-content:center"></div>
+        <div id="googleErr" class="auth-err"></div>
+      </div>
+      <div id="googlePhoneBox" class="hidden" style="margin-top:8px">
+        <p style="font-size:13px">Google အကောင့် (<b id="googleEmailLabel"></b>) နဲ့ ပထမဆုံး ဝင်တာပါ — ပို့ဖို့နဲ့ wallet အတွက် ဖုန်းနံပါတ် ရိုက်ထည့်ပါ</p>
+        <input id="gPhone" placeholder="ဖုန်း / Phone" inputmode="tel">
+        <button class="primary" id="googleLinkBtn" style="width:100%">ဆက်လုပ်မည်</button>
+        <div id="googlePhoneErr" class="auth-err"></div>
+      </div>
       <button class="auth-link" onclick="showAuth('register')">အကောင့်မရှိသေးဘူးလား? Register လုပ်မယ်</button>
       <button class="auth-link" onclick="showForgot()">Password မေ့သွားလား?</button>
       <div id="forgotBox" class="notice hidden" style="text-align:left"></div>
@@ -108,7 +120,14 @@ body.dark #bottomNav button.active{background:#1d3a2c}
       <input id="rgName" placeholder="နာမည် / Name">
       <input id="rgPhone" placeholder="ဖုန်း / Phone" inputmode="tel">
       <input id="rgPass" type="password" placeholder="Password (အနည်းဆုံး ၄ လုံး)">
+      <input id="rgEmail" type="email" placeholder="Email (OTP အတွက် — မရှိရင် ချန်ထားပါ)">
       <button class="primary" id="registerBtn" style="width:100%">Register လုပ်မည်</button>
+      <div id="otpBox" class="hidden" style="margin-top:8px">
+        <input id="otpCode" placeholder="OTP code (ဂဏန်း ၆ လုံး)" inputmode="numeric" maxlength="6">
+        <button class="primary" id="otpVerifyBtn" style="width:100%">အတည်ပြုပြီး Acc ဖွင့်မည်</button>
+        <button class="auth-link" id="otpResendBtn">code ပြန်ပို့မယ်</button>
+        <div id="otpMsg" style="font-size:13px;margin-top:6px"></div>
+      </div>
       <div id="registerErr" class="auth-err"></div>
       <button class="auth-link" onclick="showAuth('login')">အကောင့်ရှိပြီးသားလား? Login ဝင်မယ်</button>
     </div>
@@ -441,6 +460,21 @@ function authErrText(e){
   if(m.includes('phone already registered'))return 'ဒီဖုန်းနံပါတ်နဲ့ အကောင့်ရှိပြီးသား — Login ဝင်ပါ';
   if(m.includes('wrong phone or password'))return 'ဖုန်း (သို့) Password မှားနေတယ်';
   if(m.includes('name, phone and password'))return 'နာမည်၊ ဖုန်းနဲ့ Password (အနည်းဆုံး ၄ လုံး) ထည့်ပေးပါ';
+  if(m.includes('invalid email'))return 'Email ပုံစံ မမှန်ဘူး';
+  if(m.includes('email_not_configured'))return 'Gmail OTP မချိတ်ရသေးဘူး — Admin ကို ဆက်သွယ်ပါ';
+  if(m.includes('cooldown'))return 'code ပို့ပြီးသား — ၆၀ စက္ကန့် စောင့်ပြီး ပြန်တောင်းပါ';
+  if(m.includes('daily_limit'))return 'ဒီနေ့ code တောင်းတာ များသွားပြီ, မနက်ဖြန်မှ ပြန်တောင်းပါ';
+  if(m.includes('too_many_requests'))return 'ခဏစောင့်ပြီး ပြန်တောင်းပါ';
+  if(m.includes('send_failed'))return 'code ပို့လို့မရဘူး — ခဏစောင့်ပြီး ပြန်တောင်းပါ';
+  if(m.includes('no_code'))return 'code မတောင်းရသေးဘူး — အရင် code ပို့ပါ';
+  if(m.includes('code_expired'))return 'code သက်တမ်းကုန်သွားပြီ — အသစ် ပြန်တောင်းပါ';
+  if(m.includes('wrong_code'))return 'code မှားနေတယ် — ၅ ခါ မှားရင် code ပျက်မယ်';
+  if(m.includes('too_many_attempts'))return 'code ၅ ခါ မှားသွားလို့ ပျက်သွားပြီ — အသစ် ပြန်တောင်းပါ';
+  if(m.includes('email_verification_required'))return 'Email OTP အတည်ပြုဖို့ လိုတယ်';
+  if(m.includes('google_not_configured'))return 'Google login မချိတ်ရသေးဘူး — Admin ကို ဆက်သွယ်ပါ';
+  if(m.includes('invalid google token')||m.includes('missing credential'))return 'Google login မအောင်မြင်ဘူး — ပြန်ကြိုးစားပါ';
+  if(m.includes('google email not verified'))return 'Google အီးမေးလ် အတည်မပြုရသေးဘူး';
+  if(m.includes('phone linked to another email'))return 'ဒီဖုန်းက တခြား အီးမေးလ်နဲ့ ချိတ်ပြီးသား';
   return m||'Error';
 }
 $('#loginBtn').addEventListener('click',async()=>{
@@ -449,11 +483,96 @@ $('#loginBtn').addEventListener('click',async()=>{
     saveSession(r.token,r.user);
   }catch(e){$('#loginErr').textContent=authErrText(e)}
 });
-$('#registerBtn').addEventListener('click',async()=>{
+// Google login: the button only appears when the server has a Google
+// client ID (GET /api/shop-info). The ID token goes to the server, which
+// verifies it with Google; if the Google email has no shop account yet,
+// the customer enters a phone once and the email is linked to it.
+let googleCredential=null, googleClientId='', googleTries=0;
+window.onGoogleCredential=async(resp)=>{
+  googleCredential=resp&&resp.credential;
+  if(!googleCredential)return;
   try{
-    const r=await api('/api/auth/register',{method:'POST',body:JSON.stringify({name:$('#rgName').value.trim(),phone:$('#rgPhone').value.trim(),password:$('#rgPass').value})});
+    const r=await api('/api/auth/google',{method:'POST',body:JSON.stringify({credential:googleCredential})});
+    if(r.needsPhone){
+      $('#googleEmailLabel').textContent=r.email||'';
+      $('#googlePhoneBox').classList.remove('hidden');
+      $('#googleErr').textContent='';
+    }else{
+      saveSession(r.token,r.user);
+    }
+  }catch(e){$('#googleErr').textContent=authErrText(e)}
+};
+async function initGoogle(){
+  if(!googleClientId){
+    try{const info=await api('/api/shop-info');googleClientId=info.googleClientId||'';}catch(e){return}
+    if(!googleClientId)return;
+  }
+  if(!window.google||!google.accounts){
+    if(++googleTries<10)setTimeout(initGoogle,500);
+    return;
+  }
+  google.accounts.id.initialize({client_id:googleClientId,callback:window.onGoogleCredential});
+  google.accounts.id.renderButton($('#gBtn'),{theme:'outline',size:'large',width:280});
+  $('#googleBox').classList.remove('hidden');
+}
+$('#googleLinkBtn').addEventListener('click',async()=>{
+  const phone=$('#gPhone').value.trim();
+  if(!phone){$('#googlePhoneErr').textContent='ဖုန်းနံပါတ် ထည့်ပေးပါ';return;}
+  try{
+    const r=await api('/api/auth/google',{method:'POST',body:JSON.stringify({credential:googleCredential,phone})});
     saveSession(r.token,r.user);
+  }catch(e){$('#googlePhoneErr').textContent=authErrText(e)}
+});
+// Email OTP registration: if an email is entered, a 6-digit code is mailed
+// and must be typed in before the account is created (60s resend cooldown,
+// 5 codes/day/email, code valid 5 min). Without an email, registration
+// works exactly as before — name + phone + password, no code.
+let pendingReg=null, otpTimer=null;
+function startOtpCountdown(sec){
+  const btn=$('#otpResendBtn');
+  if(otpTimer)clearInterval(otpTimer);
+  let left=sec;
+  btn.disabled=true;
+  btn.textContent='code ပြန်ပို့မယ် ('+left+'s)';
+  otpTimer=setInterval(()=>{
+    left--;
+    if(left<=0){clearInterval(otpTimer);otpTimer=null;btn.disabled=false;btn.textContent='code ပြန်ပို့မယ်';}
+    else btn.textContent='code ပြန်ပို့မယ် ('+left+'s)';
+  },1000);
+}
+$('#registerBtn').addEventListener('click',async()=>{
+  const name=$('#rgName').value.trim(), phone=$('#rgPhone').value.trim(), password=$('#rgPass').value, email=$('#rgEmail').value.trim();
+  if(!email){
+    try{
+      const r=await api('/api/auth/register',{method:'POST',body:JSON.stringify({name,phone,password})});
+      saveSession(r.token,r.user);
+    }catch(e){$('#registerErr').textContent=authErrText(e)}
+    return;
+  }
+  pendingReg={name,phone,password,email};
+  try{
+    await api('/api/auth/request-otp',{method:'POST',body:JSON.stringify({email,phone})});
+    $('#otpBox').classList.remove('hidden');
+    $('#otpMsg').textContent='code ကို '+email+' ဆီ ပို့ပြီးပြီ — ၅ မိနစ်အတွင်း ရိုက်ထည့်ပါ (spam ထဲလည်း စစ်ကြည့်ပါ)';
+    $('#registerErr').textContent='';
+    startOtpCountdown(60);
   }catch(e){$('#registerErr').textContent=authErrText(e)}
+});
+$('#otpVerifyBtn').addEventListener('click',async()=>{
+  if(!pendingReg)return;
+  try{
+    const v=await api('/api/auth/verify-otp',{method:'POST',body:JSON.stringify({email:pendingReg.email,code:$('#otpCode').value.trim()})});
+    const r=await api('/api/auth/register',{method:'POST',body:JSON.stringify({name:pendingReg.name,phone:pendingReg.phone,password:pendingReg.password,email:pendingReg.email,otpToken:v.otpToken})});
+    saveSession(r.token,r.user);
+  }catch(e){$('#otpMsg').textContent=authErrText(e)}
+});
+$('#otpResendBtn').addEventListener('click',async()=>{
+  if(!pendingReg)return;
+  try{
+    await api('/api/auth/request-otp',{method:'POST',body:JSON.stringify({email:pendingReg.email,phone:pendingReg.phone})});
+    $('#otpMsg').textContent='code အသစ် ပို့ပြီးပြီ — ၅ မိနစ်အတွင်း ရိုက်ထည့်ပါ';
+    startOtpCountdown(60);
+  }catch(e){$('#otpMsg').textContent=authErrText(e)}
 });
 $('#logoutBtn').addEventListener('click',()=>{logout()});
 
@@ -802,6 +921,7 @@ $('#themeBtn').addEventListener('click',()=>document.body.classList.toggle('dark
 
 // ---- init: login gate first ----
 async function initAuth(){
+  initGoogle();
   if(authToken&&isTokenUsable()){
     try{
       authUser=await api('/api/auth/me');
