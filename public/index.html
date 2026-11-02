@@ -422,6 +422,9 @@ function syncAccountProfile(){
   // wipe a freshly re-registered account still showed the deleted
   // account's photo. A fresh account (no server photo) now clears it.
   profile.photo=authUser.photo||'';
+  // Same for the linked email: it comes from the server account, never
+  // typed in on this phone, so the Profile can show it but not edit it.
+  profile.email=authUser.email||'';
   localStorage.setItem('profile',JSON.stringify(profile));
 }
 function saveSession(token,user){
@@ -857,7 +860,10 @@ function renderProfile(){
   else{prev.classList.add('hidden');if(plc)plc.classList.remove('hidden')}
   const v=$('#profileSummary');
   const nm=authUser?authUser.name:p.name, ph=authUser?authUser.phone:p.phone;
-  if(nm||ph){v.innerHTML=`<p>👤 <b>${esc(nm||'')}</b> · ${esc(ph||'')}</p>${p.address?`<p class="muted">${esc(p.address)}</p>`:''}`}else{v.innerHTML='<p class="muted">—</p>'}
+  // Linked email, shown as plain text under the phone number — display
+  // only, there is no input for it, so it cannot be edited from Profile.
+  const em=authUser?authUser.email:(p.email||'');
+  if(nm||ph){v.innerHTML=`<p>👤 <b>${esc(nm||'')}</b> · ${esc(ph||'')}</p>${em?`<p class="muted">📧 ${esc(em)}</p>`:''}${p.address?`<p class="muted">${esc(p.address)}</p>`:''}`}else{v.innerHTML='<p class="muted">—</p>'}
 }
 function prefillProfile(){
   if(!authUser)return;
@@ -873,7 +879,7 @@ function renderFavs(){
   $('#myFavs').innerHTML=list.map(p=>`<div class="row"><span style="flex:1">${esc(lang==='en'?p.nameEn:p.name)} — <span class="price">${fmt(p.price)}</span></span><button onclick="addCart('${p.id}')">+ Cart</button></div>`).join('')||'<p class="muted">—</p>';
 }
 $('#pSave').addEventListener('click',()=>{
-  profile={name:authUser?authUser.name:'',phone:authUser?authUser.phone:'',address:$('#pAddress').value.trim(),photo:profile.photo||''};
+  profile={name:authUser?authUser.name:'',phone:authUser?authUser.phone:'',address:$('#pAddress').value.trim(),photo:profile.photo||'',email:profile.email||''};
   localStorage.setItem('profile',JSON.stringify(profile));
   renderProfile(); prefillProfile();
   $('#pMsg').textContent='✅ သိမ်းပြီးပြီ';
