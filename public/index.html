@@ -120,7 +120,7 @@ body.dark #bottomNav button.active{background:#1d3a2c}
       <input id="rgName" placeholder="နာမည် / Name">
       <input id="rgPhone" placeholder="ဖုန်း / Phone" inputmode="tel">
       <input id="rgPass" type="password" placeholder="Password (အနည်းဆုံး ၄ လုံး)">
-      <input id="rgEmail" type="email" placeholder="Email (OTP အတွက် — မရှိရင် ချန်ထားပါ)">
+      <input id="rgEmail" type="email" placeholder="Email (OTP ကုဒ် ပို့ဖို့ — မဖြစ်မနေ ထည့်ရမယ်)">
       <button class="primary" id="registerBtn" style="width:100%">Register လုပ်မည်</button>
       <div id="otpBox" class="hidden" style="margin-top:8px">
         <input id="otpCode" placeholder="OTP code (ဂဏန်း ၆ လုံး)" inputmode="numeric" maxlength="6">
@@ -471,6 +471,7 @@ function authErrText(e){
   if(m.includes('wrong_code'))return 'code မှားနေတယ် — ၅ ခါ မှားရင် code ပျက်မယ်';
   if(m.includes('too_many_attempts'))return 'code ၅ ခါ မှားသွားလို့ ပျက်သွားပြီ — အသစ် ပြန်တောင်းပါ';
   if(m.includes('email_verification_required'))return 'Email OTP အတည်ပြုဖို့ လိုတယ်';
+  if(m.includes('email_required'))return 'Email ထည့်ဖို့ လိုတယ် — OTP ကုဒ် အတည်ပြုရမယ်';
   if(m.includes('google_not_configured'))return 'Google login မချိတ်ရသေးဘူး — Admin ကို ဆက်သွယ်ပါ';
   if(m.includes('invalid google token')||m.includes('missing credential'))return 'Google login မအောင်မြင်ဘူး — ပြန်ကြိုးစားပါ';
   if(m.includes('google email not verified'))return 'Google အီးမေးလ် အတည်မပြုရသေးဘူး';
@@ -542,13 +543,7 @@ function startOtpCountdown(sec){
 }
 $('#registerBtn').addEventListener('click',async()=>{
   const name=$('#rgName').value.trim(), phone=$('#rgPhone').value.trim(), password=$('#rgPass').value, email=$('#rgEmail').value.trim();
-  if(!email){
-    try{
-      const r=await api('/api/auth/register',{method:'POST',body:JSON.stringify({name,phone,password})});
-      saveSession(r.token,r.user);
-    }catch(e){$('#registerErr').textContent=authErrText(e)}
-    return;
-  }
+  if(!email){$('#registerErr').textContent='Email ထည့်ဖို့ လိုတယ် — OTP ကုဒ် အတည်ပြုပြီးမှ Acc ဖွင့်လို့ရမယ်';return}
   pendingReg={name,phone,password,email};
   try{
     await api('/api/auth/request-otp',{method:'POST',body:JSON.stringify({email,phone})});
