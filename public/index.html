@@ -416,6 +416,15 @@ function showShop(){
 }
 function syncAccountProfile(){
   if(!authUser)return;
+  // The local profile is device-only data: scope it to the account id.
+  // The address has no server copy, so it used to leak across accounts
+  // on the same phone — after the 2026-11-02 wipe the re-registered
+  // account (same phone, new id) still showed the deleted account's
+  // address, like the photo did. If the saved profile belongs to a
+  // different account, drop its address; the current account's name,
+  // phone, photo and email always come from the server.
+  if(profile.userId!==authUser.id){profile.address='';}
+  profile.userId=authUser.id;
   profile.name=authUser.name;profile.phone=authUser.phone;
   // The server is the source of truth for the photo: the old photo used
   // to live only in this phone's localStorage, so after the 2026-11-02
@@ -879,7 +888,7 @@ function renderFavs(){
   $('#myFavs').innerHTML=list.map(p=>`<div class="row"><span style="flex:1">${esc(lang==='en'?p.nameEn:p.name)} — <span class="price">${fmt(p.price)}</span></span><button onclick="addCart('${p.id}')">+ Cart</button></div>`).join('')||'<p class="muted">—</p>';
 }
 $('#pSave').addEventListener('click',()=>{
-  profile={name:authUser?authUser.name:'',phone:authUser?authUser.phone:'',address:$('#pAddress').value.trim(),photo:profile.photo||'',email:profile.email||''};
+  profile={userId:profile.userId||'',name:authUser?authUser.name:'',phone:authUser?authUser.phone:'',address:$('#pAddress').value.trim(),photo:profile.photo||'',email:profile.email||''};
   localStorage.setItem('profile',JSON.stringify(profile));
   renderProfile(); prefillProfile();
   $('#pMsg').textContent='✅ သိမ်းပြီးပြီ';
