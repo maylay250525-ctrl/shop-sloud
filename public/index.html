@@ -768,7 +768,17 @@ async function sendChatMsg(){
 // same 1s polling the chat uses. STUN (Google, free) helps the two phones
 // find each other across networks; on a few mobile networks a call may
 // fail to connect without a TURN relay (not included — see README).
-const CALL_ICE={iceServers:[{urls:'stun:stun.l.google.com:19302'}]};
+// ICE servers: Google STUN for direct calls, plus the free OpenRelay
+// TURN (Metered) as a relay fallback — without TURN, phones behind
+// symmetric NAT / mobile CGNAT can signal and start the timer but no
+// audio flows (found 2026-11-02: timer ran, no sound). TURN over TCP/TLS
+// on 443 is included for networks that block UDP. If the relay is ever
+// unreachable the direct STUN path is still tried first.
+const CALL_ICE={iceServers:[
+  {urls:'stun:stun.l.google.com:19302'},
+  {urls:['turn:openrelay.metered.ca:80','turn:openrelay.metered.ca:443','turn:openrelay.metered.ca:443?transport=tcp'],username:'openrelayproject',credential:'openrelayproject'},
+  {urls:'turns:openrelay.metered.ca:443',username:'openrelayproject',credential:'openrelayproject'}
+]};
 let callPc=null, callStream=null, callId=null, callPoll=null, callTick=null, callStart=0, callSentCands=0, callMuted=false;
 function callFmt(s){return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0')}
 function setCallPanel(show){
