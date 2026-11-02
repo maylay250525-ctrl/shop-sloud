@@ -19,7 +19,12 @@ app.use(express.json({ limit: '2mb' })); // product photos arrive as resized dat
 app.use(express.static(path.join(__dirname, 'public')));
 
 const PORT = process.env.PORT || 3000;
-const ADMIN_PASSCODE = process.env.ADMIN_PASSCODE || 'admin123';
+// Admin passcode: MUST come from the ADMIN_PASSCODE env var. There used to
+// be a fallback to the default 'admin123' — removed 2026-11-02, because if
+// the env var were ever unset the admin would silently revert to a public
+// default. Without the env var the server still runs and the shop works,
+// but no passcode can open Admin (a random one is generated at startup).
+const ADMIN_PASSCODE = process.env.ADMIN_PASSCODE || crypto.randomBytes(32).toString('hex');
 const BACKUP_TOKEN = process.env.BACKUP_TOKEN || ''; // dedicated token for the daily automatic backup job (backup download only)
 // Email OTP: codes are sent from the shop's Gmail (free, 500/day) via
 // nodemailer. GMAIL_APP_PASSWORD is a 16-char Gmail App Password (Google
