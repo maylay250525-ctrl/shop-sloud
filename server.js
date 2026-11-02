@@ -143,10 +143,20 @@ function getMailer() {
       host: process.env.SMTP_HOST, port: Number(process.env.SMTP_PORT || 587),
       secure: Number(process.env.SMTP_PORT) === 465,
       auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+      connectionTimeout: 15000, greetingTimeout: 10000, socketTimeout: 20000,
     });
   } else if (GMAIL_USER && GMAIL_APP_PASSWORD) {
+    // Gmail over port 465 (implicit TLS). Port 587 (STARTTLS, the default
+    // for service:'gmail') hangs from Render's free tier — the connection
+    // never completes and nodemailer only fails after its 120s default
+    // timeout (verified live 2026-11-02: request-otp → 500 send_failed
+    // after 120.7s, while smtp.gmail.com:587/465 are reachable from
+    // elsewhere). Timeouts are set short so a mail failure answers fast
+    // instead of hanging the request.
     mailTransport = nodemailer.createTransport({
-      service: 'gmail', auth: { user: GMAIL_USER, pass: GMAIL_APP_PASSWORD },
+      host: 'smtp.gmail.com', port: 465, secure: true,
+      auth: { user: GMAIL_USER, pass: GMAIL_APP_PASSWORD },
+      connectionTimeout: 15000, greetingTimeout: 10000, socketTimeout: 20000,
     });
   }
   return mailTransport;
@@ -213,6 +223,7 @@ app.post('/api/auth/request-otp', ah(async (req, res) => {
       text: 'မင်္ဂလာပါ။\n\nဈေးဆိုင် အကောင့်ဖွင့်ဖို့ code: ' + code + '\n\nဒီ code က ၅ မိနစ်ပဲ အကျိုးရှိတယ်။ သင်ကိုယ်တိုင် မတောင်းဘူးဆိုရင် ဒီမေးလ်ကို လျစ်လျူရှုပါ။',
     });
   } catch (e) {
+    console.error('otp send failed:', e && e.message);
     return res.status(500).json({ error: 'send_failed' });
   }
   res.json({ ok: true, expiresIn: Math.round(OTP_CODE_MS / 1000) });
