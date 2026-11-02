@@ -115,7 +115,7 @@ body.dark #adminGate input:focus{box-shadow:inset 5px 5px 10px #070d1a,inset -5p
     <button onclick="endAdminCallUI()" style="background:#e11d48;color:#fff;border:0;border-radius:999px;padding:10px 20px">📞 ဖုန်းချမည်</button>
   </div>
 </div>
-<audio id="adminRemoteAudio" autoplay playsinline style="display:none"></audio>
+<audio id="adminRemoteAudio" autoplay playsinline style="position:fixed;width:1px;height:1px;opacity:0;bottom:0;left:0"></audio>
 <script>
 const $=s=>document.querySelector(s);
 let adminPass='', adminTab='overview', adminTimer=null, products=[];
@@ -447,7 +447,7 @@ const CALL_ICE={iceServers:[
   {urls:['turn:global.relay.metered.ca:80','turn:global.relay.metered.ca:80?transport=tcp','turn:global.relay.metered.ca:443'],username:'7421e69c28033c29fd7f0bb6',credential:'AF9NCmb4A7M24QWj'},
   {urls:'turns:global.relay.metered.ca:443?transport=tcp',username:'7421e69c28033c29fd7f0bb6',credential:'AF9NCmb4A7M24QWj'}
 ]};
-let adminCall=null, adminPc=null, adminStream=null, adminCallStateTimer=null, adminCallTick=null, adminCallStart=0, adminSentCands=0, adminMuted=false, adminRingingId=null, adminIncomingTimer=null;
+let adminCall=null, adminPc=null, adminStream=null, adminCallStateTimer=null, adminCallTick=null, adminCallStart=0, adminSentCands=0, adminMuted=false, adminRingingId=null, adminIncomingTimer=null, adminPendingCands=[];
 function adminCallFmt(s){return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0')}
 async function pollIncomingCalls(){
   if(!adminPass||adminCall)return;
@@ -490,20 +490,26 @@ window.acceptCall=async()=>{
     adminPc=new RTCPeerConnection(CALL_ICE);
     adminStream=mic;
     mic.getTracks().forEach(t=>adminPc.addTrack(t,mic));
-    adminPc.onicecandidate=e=>{if(e.candidate&&adminCall)aapi('/api/admin/calls/'+adminCall+'/candidate',{method:'POST',body:JSON.stringify({candidate:e.candidate})}).catch(()=>{})};
-    adminPc.ontrack=e=>{const a=$('#adminRemoteAudio');a.srcObject=e.streams[0];a.play().catch(()=>{})};
+    // Candidates gathered before adminCall is set must be queued, not
+    // dropped: gathering starts at setLocalDescription, before the answer
+    // POST returns — the old code silently lost them, so ICE could never
+    // connect and the timer ran with no audio.
+    function postAdminCand(cd){if(adminCall)aapi('/api/admin/calls/'+adminCall+'/candidate',{method:'POST',body:JSON.stringify({candidate:cd})}).catch(()=>{});else adminPendingCands.push(cd)}
+    adminPc.onicecandidate=e=>{if(e.candidate)postAdminCand(e.candidate)};
+    adminPc.ontrack=e=>{const a=$('#adminRemoteAudio');a.srcObject=e.streams[0];a.play().catch(()=>{/* mobile autoplay may block play() here — the call-bar tap retries it */})};
     await adminPc.setRemoteDescription(new RTCSessionDescription(c.offer));
     const answer=await adminPc.createAnswer();
     await adminPc.setLocalDescription(answer);
     await aapi('/api/admin/calls/'+id+'/answer',{method:'POST',body:JSON.stringify({answer:adminPc.localDescription})});
     adminCall=id;adminRingingId=null;
+    adminPendingCands.forEach(cd=>postAdminCand(cd));adminPendingCands=[];
     $('#incomingCall').classList.add('hidden');
     $('#adminCallBar').classList.remove('hidden');
     $('#adminCallName').textContent=c.name||c.phone;
     adminCallStart=Date.now();
     $('#adminCallTimer').textContent='00:00';
     adminCallStateTimer=setInterval(pollAdminCallState,1000);
-    adminCallTick=setInterval(()=>{const t=$('#adminCallTimer');if(t)t.textContent=adminCallFmt(Math.floor((Date.now()-adminCallStart)/1000))},1000);
+    adminCallTick=setInterval(()=>{const t=$('#adminCallTimer');if(t)t.textContent=adminCallFmt(Math.floor((Date.now()-adminCallStart)/1000))+' · '+(adminPc?adminPc.iceConnectionState:'')},1000);
   }catch(e){
     alert('ခေါ်ဆိုမှု မစတင်နိုင်ဘူး — လိုင်းစစ်ပြီး ပြန်စမ်းကြည့်ပါ');
     if(adminPc){try{adminPc.close()}catch(_){}adminPc=null}
@@ -518,8 +524,13 @@ async function pollAdminCallState(){
   if(!adminCall)return;
   try{
     const c=await aapi('/api/admin/calls/'+adminCall);
-    (c.candidates||[]).slice(adminSentCands).forEach(cd=>{adminPc.addIceCandidate(new RTCIceCandidate(cd)).catch(()=>{})});
-    adminSentCands=(c.candidates||[]).length;
+    // Only add the customer's candidates once our remote description is
+    // set — adding earlier rejects and the counter still advanced past
+    // them, so they were never retried.
+    if(adminPc.remoteDescription){
+      (c.candidates||[]).slice(adminSentCands).forEach(cd=>{adminPc.addIceCandidate(new RTCIceCandidate(cd)).catch(()=>{})});
+      adminSentCands=(c.candidates||[]).length;
+    }
     if(c.status==='ended'||c.status==='declined'||c.status==='missed')endAdminCall();
   }catch(e){}
 }
@@ -529,13 +540,17 @@ function endAdminCall(){
   if(adminCallTick){clearInterval(adminCallTick);adminCallTick=null}
   if(adminPc){try{adminPc.close()}catch(e){}adminPc=null}
   if(adminStream){adminStream.getTracks().forEach(t=>t.stop());adminStream=null}
-  adminCall=null;adminSentCands=0;adminMuted=false;
+  adminCall=null;adminSentCands=0;adminMuted=false;adminPendingCands=[];
   const m=$('#adminCallMute');if(m)m.textContent='🔊';
   const w=$('#adminMicWarn');if(w)w.classList.add('hidden');
   $('#adminCallBar').classList.add('hidden');
   if(id)aapi('/api/admin/calls/'+id+'/end',{method:'POST'}).catch(()=>{});
 }
 window.endAdminCallUI=()=>endAdminCall();
+// Tapping anywhere in the call bar retries playing the remote audio —
+// mobile browsers often block play() in ontrack (no fresh user gesture),
+// so the sound needs a tap to start.
+$('#adminCallBar').addEventListener('click',()=>{const a=$('#adminRemoteAudio');if(a&&a.srcObject)a.play().catch(()=>{})});
 window.toggleAdminMute=()=>{
   if(!adminStream)return;
   adminMuted=!adminMuted;
