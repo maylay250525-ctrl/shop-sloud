@@ -278,6 +278,9 @@ function requireAuth(req, res, next) {
 // Render free service awake so it does not spin down after 15 min idle.
 // ---------------------------------------------------------------------------
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
+// Public privacy policy page (linked from the Google OAuth consent screen
+// and from the login screen). No login needed.
+app.get('/privacy', (req, res) => res.sendFile(path.join(__dirname, 'public', 'privacy.html')));
 
 async function deliveryFeeFor(township, subtotal) {
   const settings = await store.getSettings();
