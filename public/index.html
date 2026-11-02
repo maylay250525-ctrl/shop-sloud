@@ -417,6 +417,11 @@ function showShop(){
 function syncAccountProfile(){
   if(!authUser)return;
   profile.name=authUser.name;profile.phone=authUser.phone;
+  // The server is the source of truth for the photo: the old photo used
+  // to live only in this phone's localStorage, so after the 2026-11-02
+  // wipe a freshly re-registered account still showed the deleted
+  // account's photo. A fresh account (no server photo) now clears it.
+  profile.photo=authUser.photo||'';
   localStorage.setItem('profile',JSON.stringify(profile));
 }
 function saveSession(token,user){
