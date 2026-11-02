@@ -158,7 +158,10 @@ async function gmailAccessToken() {
       refresh_token: GOOGLE_REFRESH_TOKEN, grant_type: 'refresh_token',
     }),
   });
-  if (!res.ok) throw new Error('gmail token exchange failed: ' + res.status);
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error('gmail token exchange failed: ' + res.status + ' ' + body.slice(0, 200));
+  }
   const j = await res.json();
   gmailAccess = { token: j.access_token, exp: now + (j.expires_in || 3600) * 1000 };
   return gmailAccess.token;
@@ -178,7 +181,10 @@ const gmailApiMailer = {
       signal: AbortSignal.timeout(20000),
       body: JSON.stringify({ raw: mimeB64({ from, to, subject, text }) }),
     });
-    if (!res.ok) throw new Error('gmail send failed: ' + res.status);
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error('gmail send failed: ' + res.status + ' ' + body.slice(0, 200));
+    }
   },
 };
 let mailTransport = null;
