@@ -795,21 +795,34 @@ function callCleanup(){
   const w=$('#callMicWarn');if(w)w.classList.add('hidden');
   setCallPanel(false);
 }
+// Mic permission, asked on every call: if the browser already granted it,
+// getUserMedia returns at once with no prompt; if not, the browser asks.
+// If it was denied before, browsers never ask again — show how to turn
+// it back on in the browser's site settings instead of starting a
+// silent call (the 2026-11-02 test had the timer running but no sound).
+async function ensureMic(){
+  try{
+    if(navigator.permissions&&navigator.permissions.query){
+      const st=await navigator.permissions.query({name:'microphone'});
+      if(st.state==='denied')return null;
+    }
+  }catch(e){/* Permissions API unsupported — fall through to getUserMedia */}
+  try{return await navigator.mediaDevices.getUserMedia({audio:true});}
+  catch(e){return null;}
+}
 async function startCall(){
   if(callId)return;
-  // Ask for the mic IN PARALLEL with setting up the call: the offer is
-  // created from an empty audio transceiver first, and the mic track is
-  // attached with replaceTrack as soon as permission is granted — so a
-  // slow (or missing) permission prompt never blocks the call itself.
-  // If the mic is denied, the call still connects; the other side just
-  // hears silence, and a warning shows in the panel.
+  const mic=await ensureMic();
+  if(!mic){
+    $('#callStatus').textContent='🎙️ Microphone ခွင့်မပြုရသေးဘူး — လိပ်စာဘားဘေးက 🔒 ကို နှိပ် → Site settings → Microphone → Allow လုပ်ပြီး ပြန်ခေါ်ပါ';
+    const w=$('#callMicWarn');if(w)w.classList.remove('hidden');
+    setCallPanel(true);
+    setTimeout(()=>{if(!callId)setCallPanel(false)},8000);
+    return;
+  }
   callPc=new RTCPeerConnection(CALL_ICE);
-  const sender=callPc.addTransceiver('audio',{direction:'sendrecv'}).sender;
-  navigator.mediaDevices.getUserMedia({audio:true}).then(stream=>{
-    if(!callPc){stream.getTracks().forEach(t=>t.stop());return}
-    callStream=stream;
-    stream.getTracks().forEach(t=>{try{sender.replaceTrack(t)}catch(e){}});
-  }).catch(()=>{const w=$('#callMicWarn');if(w)w.classList.remove('hidden')});
+  callStream=mic;
+  mic.getTracks().forEach(t=>callPc.addTrack(t,mic));
   callPc.onicecandidate=e=>{if(e.candidate&&callId)api('/api/call/'+callId+'/candidate',{method:'POST',body:JSON.stringify({candidate:e.candidate})}).catch(()=>{})};
   callPc.ontrack=e=>{const a=$('#remoteAudio');a.srcObject=e.streams[0];a.play().catch(()=>{})};
   try{
