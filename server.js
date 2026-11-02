@@ -228,7 +228,7 @@ function getMailer() {
 function mailFrom() { return GMAIL_USER || process.env.SMTP_USER || ''; }
 
 // Short-lived HMAC token proving an email passed OTP verification. The
-// register endpoint requires it when an email is given, so the client
+// register endpoint requires it for every registration, so the client
 // cannot claim "verified" without the code.
 function signOtpToken(email) {
   const payload = { email, exp: Date.now() + OTP_TOKEN_MS };
@@ -379,20 +379,21 @@ app.post('/api/auth/register', ah(async (req, res) => {
   }
   const cleanPhone = String(phone).trim();
   const cleanEmail = email ? String(email).trim().toLowerCase() : '';
-  // Email is optional: without it, registration works exactly as before.
-  // With it, the email must have passed OTP verification (otpToken proves
-  // the code was typed in), otherwise anyone could claim any address.
-  if (cleanEmail) {
-    if (!EMAIL_RE.test(cleanEmail)) return res.status(400).json({ error: 'invalid email' });
-    if (!verifyOtpToken(otpToken, cleanEmail)) return res.status(400).json({ error: 'email_verification_required' });
-  }
+  // Email + OTP is mandatory for every new account (2026-11-02: the owner
+  // does not want fake accounts). Without a verified email, registration
+  // is refused — the email must have passed OTP verification (otpToken
+  // proves the code was typed in), otherwise anyone could claim any
+  // address or open an account with any phone number.
+  if (!cleanEmail) return res.status(400).json({ error: 'email_required' });
+  if (!EMAIL_RE.test(cleanEmail)) return res.status(400).json({ error: 'invalid email' });
+  if (!verifyOtpToken(otpToken, cleanEmail)) return res.status(400).json({ error: 'email_verification_required' });
   const existing = await store.getUserByPhone(cleanPhone);
   if (existing) return res.status(409).json({ error: 'phone already registered' });
   const salt = crypto.randomBytes(16).toString('hex');
   const user = {
     id: 'u' + Date.now().toString(36),
     name: String(name).trim(), phone: cleanPhone,
-    email: cleanEmail, emailVerified: !!cleanEmail,
+    email: cleanEmail, emailVerified: true,
     passwordHash: hashPassword(String(password), salt), salt,
     createdAt: new Date().toISOString(),
   };
