@@ -776,8 +776,9 @@ async function sendChatMsg(){
 // unreachable the direct STUN path is still tried first.
 const CALL_ICE={iceServers:[
   {urls:'stun:stun.l.google.com:19302'},
-  {urls:['turn:openrelay.metered.ca:80','turn:openrelay.metered.ca:443','turn:openrelay.metered.ca:443?transport=tcp'],username:'openrelayproject',credential:'openrelayproject'},
-  {urls:'turns:openrelay.metered.ca:443',username:'openrelayproject',credential:'openrelayproject'}
+  {urls:'stun:stun.relay.metered.ca:80'},
+  {urls:['turn:global.relay.metered.ca:80','turn:global.relay.metered.ca:80?transport=tcp','turn:global.relay.metered.ca:443'],username:'7421e69c28033c29fd7f0bb6',credential:'AF9NCmb4A7M24QWj'},
+  {urls:'turns:global.relay.metered.ca:443?transport=tcp',username:'7421e69c28033c29fd7f0bb6',credential:'AF9NCmb4A7M24QWj'}
 ]};
 let callPc=null, callStream=null, callId=null, callPoll=null, callTick=null, callStart=0, callSentCands=0, callMuted=false;
 function callFmt(s){return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0')}
