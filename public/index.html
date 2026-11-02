@@ -249,7 +249,7 @@ body.dark #bottomNav button.active{background:#1d3a2c}
   </div>
   <div id="chatMsgs" class="chat-msgs"></div>
   <div class="chat-input"><input id="chatText" placeholder="စာရိုက်ပါ…" maxlength="1000"><button class="primary" id="chatSend">➤</button></div>
-  <audio id="remoteAudio" autoplay playsinline style="display:none"></audio>
+  <audio id="remoteAudio" autoplay playsinline style="position:fixed;width:1px;height:1px;opacity:0;bottom:0;left:0"></audio>
 </div>
 <script>
 const $=s=>document.querySelector(s);
@@ -780,7 +780,7 @@ const CALL_ICE={iceServers:[
   {urls:['turn:global.relay.metered.ca:80','turn:global.relay.metered.ca:80?transport=tcp','turn:global.relay.metered.ca:443'],username:'7421e69c28033c29fd7f0bb6',credential:'AF9NCmb4A7M24QWj'},
   {urls:'turns:global.relay.metered.ca:443?transport=tcp',username:'7421e69c28033c29fd7f0bb6',credential:'AF9NCmb4A7M24QWj'}
 ]};
-let callPc=null, callStream=null, callId=null, callPoll=null, callTick=null, callStart=0, callSentCands=0, callMuted=false;
+let callPc=null, callStream=null, callId=null, callPoll=null, callTick=null, callStart=0, callSentCands=0, callMuted=false, callPendingCands=[];
 function callFmt(s){return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0')}
 function setCallPanel(show){
   $('#callPanel').classList.toggle('hidden',!show);
@@ -791,7 +791,7 @@ function callCleanup(){
   if(callTick){clearInterval(callTick);callTick=null}
   if(callPc){try{callPc.close()}catch(e){}callPc=null}
   if(callStream){callStream.getTracks().forEach(t=>t.stop());callStream=null}
-  callId=null;callSentCands=0;callMuted=false;
+  callId=null;callSentCands=0;callMuted=false;callPendingCands=[];
   const m=$('#callMute');if(m)m.textContent='🔊';
   const w=$('#callMicWarn');if(w)w.classList.add('hidden');
   setCallPanel(false);
@@ -824,8 +824,13 @@ async function startCall(){
   callPc=new RTCPeerConnection(CALL_ICE);
   callStream=mic;
   mic.getTracks().forEach(t=>callPc.addTrack(t,mic));
-  callPc.onicecandidate=e=>{if(e.candidate&&callId)api('/api/call/'+callId+'/candidate',{method:'POST',body:JSON.stringify({candidate:e.candidate})}).catch(()=>{})};
-  callPc.ontrack=e=>{const a=$('#remoteAudio');a.srcObject=e.streams[0];a.play().catch(()=>{})};
+  // Candidates gathered before the call id exists must be queued, not
+  // dropped: gathering starts at setLocalDescription, before the offer
+  // POST returns the id — the old code silently lost them, so ICE could
+  // never connect and the timer ran with no audio.
+  function postCallCand(cd){if(callId)api('/api/call/'+callId+'/candidate',{method:'POST',body:JSON.stringify({candidate:cd})}).catch(()=>{});else callPendingCands.push(cd)}
+  callPc.onicecandidate=e=>{if(e.candidate)postCallCand(e.candidate)};
+  callPc.ontrack=e=>{const a=$('#remoteAudio');a.srcObject=e.streams[0];a.play().catch(()=>{/* mobile autoplay may block play() here — the call-panel tap retries it */})};
   try{
     const offer=await callPc.createOffer();
     await callPc.setLocalDescription(offer);
@@ -838,6 +843,7 @@ async function startCall(){
       return;
     }
     callId=r.id;
+    callPendingCands.forEach(cd=>postCallCand(cd));callPendingCands=[];
     setCallPanel(true);
     $('#callStatus').textContent='Admin ကို ခေါ်နေတယ်…';
     $('#callTimer').textContent='00:00';
@@ -851,12 +857,20 @@ async function pollCall(){
     if(c.answer&&callPc&&callPc.signalingState==='have-local-offer'){
       await callPc.setRemoteDescription(new RTCSessionDescription(c.answer));
     }
-    (c.candidates||[]).slice(callSentCands).forEach(cd=>{callPc.addIceCandidate(new RTCIceCandidate(cd)).catch(()=>{})});
-    callSentCands=(c.candidates||[]).length;
+    // Only add the admin's candidates once our remote description is set —
+    // adding earlier rejects (silently lost before, and the counter still
+    // advanced past them, so they were never retried).
+    if(callPc.remoteDescription){
+      (c.candidates||[]).slice(callSentCands).forEach(cd=>{callPc.addIceCandidate(new RTCIceCandidate(cd)).catch(()=>{})});
+      callSentCands=(c.candidates||[]).length;
+    }
     if(c.status==='active'&&!callTick){
       callStart=Date.now();
       $('#callStatus').textContent='ဖုန်းပြောနေတယ်';
       callTick=setInterval(()=>{const t=$('#callTimer');if(t)t.textContent=callFmt(Math.floor((Date.now()-callStart)/1000))},1000);
+    }
+    if(c.status==='active'&&callPc&&callTick){
+      const el=$('#callStatus');if(el)el.textContent='ဖုန်းပြောနေတယ် · '+callPc.iceConnectionState;
     }else if(c.status==='declined'){endCall('Admin က ငြင်းလိုက်တယ်')}
     else if(c.status==='missed'){endCall('Admin မကိုင်လိုက်ဘူး — စာထားခဲ့လိုက်ပါ')}
     else if(c.status==='ended'){endCall('ဖုန်းပြီးပြီ')}
@@ -879,6 +893,10 @@ window.toggleCallMute=()=>{
   $('#callMute').textContent=callMuted?'🔇':'🔊';
 };
 $('#callBtn').addEventListener('click',startCall);
+// Tapping anywhere in the call panel retries playing the remote audio —
+// mobile browsers often block play() in ontrack (no fresh user gesture),
+// so the sound needs a tap to start.
+$('#callPanel').addEventListener('click',()=>{const a=$('#remoteAudio');if(a&&a.srcObject)a.play().catch(()=>{})});
 $('#callEnd').addEventListener('click',()=>endCall(''));
 
 // ---- Profile ----
