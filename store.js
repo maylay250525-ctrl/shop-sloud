@@ -212,10 +212,13 @@ class JsonStore {
   // Users include password hashes + salts (needed so restored accounts can
   // still log in) — the backup file is admin-only, keep it private.
   async exportAll() {
+    // The live Gmail refresh token is NOT exported: it is a credential,
+    // and a restored backup re-links Gmail with one tap in Admin instead.
+    const { gmailRefreshToken, ...settings } = this.db.settings;
     return {
       products: this.db.products,
       zones: this.db.deliveryZones,
-      settings: this.db.settings,
+      settings,
       orders: this.db.orders,
       topups: this.db.topups,
       wallets: await this.listWallets(),
@@ -362,6 +365,10 @@ class PgStore {
     // Migration: email OTP verification (added 2026-11-02).
     await this.pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT');
     await this.pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT FALSE');
+    // Migration: Gmail API refresh token, stored by the server-side OAuth
+    // flow (Admin → Settings → "Gmail ချိတ်မည်") so OTP mail can be sent
+    // without pasting tokens (added 2026-11-02).
+    await this.pool.query('ALTER TABLE settings ADD COLUMN IF NOT EXISTS gmail_refresh_token TEXT');
     // Seed once, when tables are empty.
     const { rows } = await this.pool.query('SELECT COUNT(*)::int AS n FROM products');
     if (rows[0].n === 0) {
@@ -421,14 +428,14 @@ class PgStore {
   async getSettings() {
     const { rows } = await this.pool.query('SELECT * FROM settings WHERE id = 1');
     const r = rows[0];
-    return { recipientName: r.recipient_name, recipientPhone: r.recipient_phone, freeThreshold: r.free_threshold, otherTownshipFee: r.other_township_fee, announcement: r.announcement || '', aiEnabled: r.ai_enabled !== false };
+    return { recipientName: r.recipient_name, recipientPhone: r.recipient_phone, freeThreshold: r.free_threshold, otherTownshipFee: r.other_township_fee, announcement: r.announcement || '', aiEnabled: r.ai_enabled !== false, gmailRefreshToken: r.gmail_refresh_token || '' };
   }
   async updateSettings(fields) {
     const cur = await this.getSettings();
     const next = { ...cur, ...fields };
     await this.pool.query(
-      'UPDATE settings SET recipient_name=$1, recipient_phone=$2, free_threshold=$3, other_township_fee=$4, announcement=$5, ai_enabled=$6 WHERE id=1',
-      [next.recipientName, next.recipientPhone, next.freeThreshold, next.otherTownshipFee, next.announcement || '', next.aiEnabled !== false]);
+      'UPDATE settings SET recipient_name=$1, recipient_phone=$2, free_threshold=$3, other_township_fee=$4, announcement=$5, ai_enabled=$6, gmail_refresh_token=$7 WHERE id=1',
+      [next.recipientName, next.recipientPhone, next.freeThreshold, next.otherTownshipFee, next.announcement || '', next.aiEnabled !== false, next.gmailRefreshToken || '']);
     return next;
   }
   async listOrders() {
@@ -520,7 +527,9 @@ class PgStore {
       this.pool.query('SELECT * FROM chat_messages ORDER BY created_at ASC, id ASC').then(r => r.rows.map(chatMessageFromRow)),
       this.pool.query('SELECT name, value FROM counters').then(r => Object.fromEntries(r.rows.map(c => [c.name, c.value]))),
     ]);
-    return { products, zones, settings, orders, topups, wallets, users, customers, chatMessages: chats, counters };
+    // The live Gmail refresh token is NOT exported (see JsonStore.exportAll).
+    const { gmailRefreshToken: _gmailToken, ...settingsOut } = settings;
+    return { products, zones, settings: settingsOut, orders, topups, wallets, users, customers, chatMessages: chats, counters };
   }
   // ---- Customer <-> Admin chat ----
   async createChatMessage(m) {
