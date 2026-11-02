@@ -81,9 +81,26 @@ body.dark #bottomNav button.active{background:#1d3a2c}
 .auth-tabs button.active{background:linear-gradient(135deg,#0e7a4d,#12a150);color:#fff;border-color:transparent}
 .auth-err{color:#b3261e;font-size:13px;min-height:18px;margin-top:8px}
 .auth-link{background:none;border:0;color:var(--accent);font-size:13px;margin-top:12px;text-decoration:underline;padding:4px}
+/* Splash screen — dark + gold, shows on every page load for ~3s (logged in or not), then fades */
+#splash{position:fixed;inset:0;z-index:100;background:#111827;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;transition:opacity .5s ease;animation:splashOut .5s ease 3.5s forwards}
+#splash.hide{opacity:0;pointer-events:none}
+#splash img{width:120px;height:120px;border-radius:24%;border:2px solid #d4af37;box-shadow:0 0 30px rgba(212,175,55,.35)}
+#splash h1{color:#fff;font-size:30px;margin:0;letter-spacing:1px}
+#splash .tag{color:#d4af37;font-size:14px;letter-spacing:2px}
+#splash .dots{display:flex;gap:8px}
+#splash .dots span{width:8px;height:8px;border-radius:50%;background:#d4af37;animation:splashDot 1s infinite}
+#splash .dots span:nth-child(2){animation-delay:.2s}
+#splash .dots span:nth-child(3){animation-delay:.4s}
+@keyframes splashDot{0%,100%{opacity:.3;transform:scale(.8)}50%{opacity:1;transform:scale(1.2)}}
+@keyframes splashOut{to{opacity:0;visibility:hidden}}
 </style>
 </head>
 <body>
+<!-- Splash screen: shows on every entry (~3s), logged in or not, then fades into the shop/login -->
+<div id="splash"><img src="/logo.png" alt="ဈေးဆိုင် logo"><h1>ဈေးဆိုင်</h1><div class="tag">အွန်လိုင်းဈေးဆိုင်</div><div class="dots"><span></span><span></span><span></span></div></div>
+<script>
+(function(){var s=document.getElementById('splash');if(!s)return;var done=false;function hide(){if(done)return;done=true;s.classList.add('hide');setTimeout(function(){s.remove()},600)}setTimeout(hide,3000);s.addEventListener('click',hide);})();
+</script>
 <!-- Announcement ticker: white bar, black text, right-to-left, 4 passes then hides -->
 <div id="announceBar" class="hidden"><span class="ann-ic">📢</span><div class="ann-view"><span id="announceTrack"></span></div><button class="ann-x" onclick="hideAnnouncement()">✕</button></div>
 <!-- ============ LOGIN / REGISTER ============ -->
