@@ -464,23 +464,31 @@ async function pollIncomingCalls(){
     }else if(adminRingingId){adminRingingId=null;$('#incomingCall').classList.add('hidden')}
   }catch(e){}
 }
+// Mic permission, asked on every answer: already granted → no prompt;
+// not yet asked → the browser asks; denied before → browsers never ask
+// again, so show how to turn it back on instead of accepting a silent
+// call (the 2026-11-02 test had the timer running but no sound).
+async function ensureAdminMic(){
+  try{
+    if(navigator.permissions&&navigator.permissions.query){
+      const st=await navigator.permissions.query({name:'microphone'});
+      if(st.state==='denied')return null;
+    }
+  }catch(e){/* Permissions API unsupported — fall through to getUserMedia */}
+  try{return await navigator.mediaDevices.getUserMedia({audio:true});}
+  catch(e){return null;}
+}
 window.acceptCall=async()=>{
   const id=adminRingingId;if(!id)return;
   try{
     const list=await aapi('/api/admin/calls/incoming');
     const c=list.find(x=>x.id===id);
     if(!c){adminRingingId=null;$('#incomingCall').classList.add('hidden');return}
-    // Same as the customer side: the answer is created from an empty
-    // audio transceiver first, and the mic track is attached with
-    // replaceTrack as soon as permission is granted — a slow (or
-    // missing) permission prompt never blocks answering the call.
+    const mic=await ensureAdminMic();
+    if(!mic){alert('🎙️ Microphone ခွင့်မပြုရသေးဘူး — လိပ်စာဘားဘေးက 🔒 ကို နှိပ် → Site settings → Microphone → Allow လုပ်ပြီး ဝယ်သူကို ပြန်ခေါ်ခိုင်းပါ');return;}
     adminPc=new RTCPeerConnection(CALL_ICE);
-    const sender=adminPc.addTransceiver('audio',{direction:'sendrecv'}).sender;
-    navigator.mediaDevices.getUserMedia({audio:true}).then(stream=>{
-      if(!adminPc){stream.getTracks().forEach(t=>t.stop());return}
-      adminStream=stream;
-      stream.getTracks().forEach(t=>{try{sender.replaceTrack(t)}catch(e){}});
-    }).catch(()=>{const w=$('#adminMicWarn');if(w)w.classList.remove('hidden')});
+    adminStream=mic;
+    mic.getTracks().forEach(t=>adminPc.addTrack(t,mic));
     adminPc.onicecandidate=e=>{if(e.candidate&&adminCall)aapi('/api/admin/calls/'+adminCall+'/candidate',{method:'POST',body:JSON.stringify({candidate:e.candidate})}).catch(()=>{})};
     adminPc.ontrack=e=>{const a=$('#adminRemoteAudio');a.srcObject=e.streams[0];a.play().catch(()=>{})};
     await adminPc.setRemoteDescription(new RTCSessionDescription(c.offer));
