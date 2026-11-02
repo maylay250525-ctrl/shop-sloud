@@ -325,6 +325,7 @@ let refreshTimer=null;
 function startRefresh(){stopRefresh();refreshTimer=setInterval(refreshShop,15000)}
 function stopRefresh(){if(refreshTimer){clearInterval(refreshTimer);refreshTimer=null}}
 async function refreshShop(){
+  if(!authToken)return;
   if(shopTyping())return;
   try{
     products=await api('/api/products');
@@ -426,6 +427,14 @@ function saveSession(token,user){
 function logout(){
   authToken='';authUser=null;localStorage.removeItem('shopToken');
   cart={};renderCart();stopRefresh();
+  // Stop the 1s view timers too: logout() used to stop only the 15s shop
+  // refresh, so a Wallet/Orders timer kept firing after logout — every
+  // tick hit a protected API with no token, got 401, and forced the login
+  // screen again, so the Register form could never stay open (found
+  // 2026-11-02: the form flipped back to Login every second).
+  if(typeof stopWalletRefresh==='function')stopWalletRefresh();
+  if(typeof stopOrdersRefresh==='function')stopOrdersRefresh();
+  if(typeof stopOrderMsgRefresh==='function')stopOrderMsgRefresh();
   if(typeof closeChatPage==='function'&&chatOpen)closeChatPage();
   $('#announceBar').classList.add('hidden');
   showAuth('login');
@@ -524,10 +533,11 @@ $('#googleLinkBtn').addEventListener('click',async()=>{
     saveSession(r.token,r.user);
   }catch(e){$('#googlePhoneErr').textContent=authErrText(e)}
 });
-// Email OTP registration: if an email is entered, a 6-digit code is mailed
-// and must be typed in before the account is created (60s resend cooldown,
-// 5 codes/day/email, code valid 5 min). Without an email, registration
-// works exactly as before — name + phone + password, no code.
+// Email OTP registration (mandatory since 2026-11-02): a 6-digit code is
+// mailed and must be typed in before the account is created (60s resend
+// cooldown, 5 codes/day/email, code valid 5 min). Without an email the
+// form refuses to submit. The button shows a sending state because the
+// mail request can take a while when the free server is waking up.
 let pendingReg=null, otpTimer=null;
 function startOtpCountdown(sec){
   const btn=$('#otpResendBtn');
@@ -542,16 +552,19 @@ function startOtpCountdown(sec){
   },1000);
 }
 $('#registerBtn').addEventListener('click',async()=>{
+  const btn=$('#registerBtn');
   const name=$('#rgName').value.trim(), phone=$('#rgPhone').value.trim(), password=$('#rgPass').value, email=$('#rgEmail').value.trim();
+  $('#registerErr').textContent='';
   if(!email){$('#registerErr').textContent='Email ထည့်ဖို့ လိုတယ် — OTP ကုဒ် အတည်ပြုပြီးမှ Acc ဖွင့်လို့ရမယ်';return}
   pendingReg={name,phone,password,email};
+  btn.disabled=true;btn.textContent='code ပို့နေတယ်...';
   try{
     await api('/api/auth/request-otp',{method:'POST',body:JSON.stringify({email,phone})});
     $('#otpBox').classList.remove('hidden');
     $('#otpMsg').textContent='code ကို '+email+' ဆီ ပို့ပြီးပြီ — ၅ မိနစ်အတွင်း ရိုက်ထည့်ပါ (spam ထဲလည်း စစ်ကြည့်ပါ)';
-    $('#registerErr').textContent='';
     startOtpCountdown(60);
   }catch(e){$('#registerErr').textContent=authErrText(e)}
+  btn.disabled=false;btn.textContent='Register လုပ်မည်';
 });
 $('#otpVerifyBtn').addEventListener('click',async()=>{
   if(!pendingReg)return;
@@ -617,6 +630,7 @@ let walletTimer=null;
 function startWalletRefresh(){stopWalletRefresh();walletTimer=setInterval(refreshWalletBalance,1000)}
 function stopWalletRefresh(){if(walletTimer){clearInterval(walletTimer);walletTimer=null}}
 async function refreshWalletBalance(){
+  if(!authToken)return;
   if($('#walletView').classList.contains('hidden'))return;
   try{
     const w=await api('/api/wallet');
@@ -653,6 +667,7 @@ let ordersTimer=null;
 function startOrdersRefresh(){stopOrdersRefresh();ordersTimer=setInterval(refreshMyOrders,1000)}
 function stopOrdersRefresh(){if(ordersTimer){clearInterval(ordersTimer);ordersTimer=null}}
 async function refreshMyOrders(){
+  if(!authToken)return;
   if($('#profileView').classList.contains('hidden'))return;
   try{
     const list=await api('/api/orders');
@@ -665,6 +680,7 @@ let orderMsgTimer=null;
 function startOrderMsgRefresh(){stopOrderMsgRefresh();orderMsgTimer=setInterval(refreshOrderMsg,1000)}
 function stopOrderMsgRefresh(){if(orderMsgTimer){clearInterval(orderMsgTimer);orderMsgTimer=null}}
 async function refreshOrderMsg(){
+  if(!authToken)return;
   if($('#cartView').classList.contains('hidden'))return;
   const m=$('#orderMsg');
   if(!m||!lastPlacedOrder)return;
