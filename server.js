@@ -398,7 +398,7 @@ app.post('/api/auth/register', ah(async (req, res) => {
     createdAt: new Date().toISOString(),
   };
   await store.createUser(user);
-  res.status(201).json({ token: signToken(user), user: { id: user.id, name: user.name, phone: user.phone, email: user.email } });
+  res.status(201).json({ token: signToken(user), user: { id: user.id, name: user.name, phone: user.phone, email: user.email, photo: user.photo || '' } });
 }));
 
 // Google login ("Sign in with Google"). The client sends Google's signed
@@ -435,7 +435,7 @@ app.post('/api/auth/google', ah(async (req, res) => {
     if ((u.email || '').toLowerCase() === email) { user = await store.getUserByPhone(u.phone); break; }
   }
   if (user) {
-    return res.json({ token: signToken(user), user: { id: user.id, name: user.name, phone: user.phone, email: user.email || '' } });
+    return res.json({ token: signToken(user), user: { id: user.id, name: user.name, phone: user.phone, email: user.email || '', photo: user.photo || '' } });
   }
   const cleanPhone = phone ? String(phone).trim() : '';
   if (!cleanPhone) {
@@ -451,7 +451,7 @@ app.post('/api/auth/google', ah(async (req, res) => {
     // and stay untouched).
     const linked = await store.updateUserEmail(cleanPhone, email);
     if (!linked) return res.status(500).json({ error: 'link failed' });
-    return res.json({ token: signToken(linked), user: { id: linked.id, name: linked.name, phone: linked.phone, email: linked.email || '' } });
+    return res.json({ token: signToken(linked), user: { id: linked.id, name: linked.name, phone: linked.phone, email: linked.email || '', photo: linked.photo || '' } });
   }
   const salt = crypto.randomBytes(16).toString('hex');
   const randomPass = crypto.randomBytes(32).toString('hex');
@@ -463,7 +463,7 @@ app.post('/api/auth/google', ah(async (req, res) => {
     createdAt: new Date().toISOString(),
   };
   await store.createUser(fresh);
-  res.status(201).json({ token: signToken(fresh), user: { id: fresh.id, name: fresh.name, phone: fresh.phone, email: fresh.email } });
+  res.status(201).json({ token: signToken(fresh), user: { id: fresh.id, name: fresh.name, phone: fresh.phone, email: fresh.email, photo: fresh.photo || '' } });
 }));
 
 // Login: returns a token valid for 48 hours.
@@ -473,14 +473,14 @@ app.post('/api/auth/login', ah(async (req, res) => {
   if (!user || hashPassword(String(password || ''), user.salt) !== user.passwordHash) {
     return res.status(401).json({ error: 'wrong phone or password' });
   }
-  res.json({ token: signToken(user), user: { id: user.id, name: user.name, phone: user.phone, email: user.email || '' } });
+  res.json({ token: signToken(user), user: { id: user.id, name: user.name, phone: user.phone, email: user.email || '', photo: user.photo || '' } });
 }));
 
 // Who is logged in (token check).
 app.get('/api/auth/me', requireAuth, ah(async (req, res) => {
   const user = await store.getUserByPhone(req.user.phone);
   if (!user) return res.status(401).json({ error: 'login required' });
-  res.json({ id: user.id, name: user.name, phone: user.phone, email: user.email || '' });
+  res.json({ id: user.id, name: user.name, phone: user.phone, email: user.email || '', photo: user.photo || '' });
 }));
 
 // Change own password (logged in).
