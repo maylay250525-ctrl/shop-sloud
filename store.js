@@ -168,7 +168,7 @@ class JsonStore {
   }
   async getUserByPhone(phone) { return this.db.users.find(u => u.phone === phone) || null; }
   async createUser(u) { this.db.users.push(u); this._persist(); return u; }
-  async listUsers() { return this.db.users.map(u => ({ id: u.id, name: u.name, phone: u.phone, createdAt: u.createdAt })); }
+  async listUsers() { return this.db.users.map(u => ({ id: u.id, name: u.name, phone: u.phone, email: u.email || '', createdAt: u.createdAt })); }
   async updateUserPassword(phone, passwordHash, salt) {
     const u = this.db.users.find(x => x.phone === phone);
     if (!u) return null;
@@ -180,6 +180,13 @@ class JsonStore {
     const u = this.db.users.find(x => x.phone === phone);
     if (!u) return null;
     u.photo = photo || '';
+    this._persist();
+    return u;
+  }
+  async updateUserEmail(phone, email) {
+    const u = this.db.users.find(x => x.phone === phone);
+    if (!u) return null;
+    u.email = email || ''; u.emailVerified = !!email;
     this._persist();
     return u;
   }
@@ -293,7 +300,7 @@ CREATE TABLE IF NOT EXISTS customers (
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY, name TEXT NOT NULL, phone TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL, salt TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL,
-  photo TEXT
+  photo TEXT, email TEXT, email_verified BOOLEAN DEFAULT FALSE
 );
 CREATE TABLE IF NOT EXISTS counters (
   name TEXT PRIMARY KEY, value INTEGER NOT NULL
@@ -328,7 +335,7 @@ function userFromRow(r) {
     id: r.id, name: r.name, phone: r.phone,
     passwordHash: r.password_hash, salt: r.salt,
     createdAt: new Date(r.created_at).toISOString(),
-    photo: r.photo || '',
+    photo: r.photo || '', email: r.email || '', emailVerified: !!r.email_verified,
   };
 }
 function chatMessageFromRow(r) {
@@ -352,6 +359,9 @@ class PgStore {
     await this.pool.query('ALTER TABLE settings ADD COLUMN IF NOT EXISTS ai_enabled BOOLEAN DEFAULT TRUE');
     // Migration: customer profile photo (added 2026-11-02).
     await this.pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS photo TEXT');
+    // Migration: email OTP verification (added 2026-11-02).
+    await this.pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT');
+    await this.pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT FALSE');
     // Seed once, when tables are empty.
     const { rows } = await this.pool.query('SELECT COUNT(*)::int AS n FROM products');
     if (rows[0].n === 0) {
@@ -566,13 +576,13 @@ class PgStore {
   }
   async createUser(u) {
     await this.pool.query(
-      'INSERT INTO users (id, name, phone, password_hash, salt, created_at) VALUES ($1,$2,$3,$4,$5,$6)',
-      [u.id, u.name, u.phone, u.passwordHash, u.salt, u.createdAt]);
+      'INSERT INTO users (id, name, phone, password_hash, salt, created_at, email, email_verified) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
+      [u.id, u.name, u.phone, u.passwordHash, u.salt, u.createdAt, u.email || '', !!u.emailVerified]);
     return u;
   }
   async listUsers() {
-    const { rows } = await this.pool.query('SELECT id, name, phone, created_at FROM users ORDER BY created_at DESC');
-    return rows.map(r => ({ id: r.id, name: r.name, phone: r.phone, createdAt: new Date(r.created_at).toISOString() }));
+    const { rows } = await this.pool.query('SELECT id, name, phone, email, created_at FROM users ORDER BY created_at DESC');
+    return rows.map(r => ({ id: r.id, name: r.name, phone: r.phone, email: r.email || '', createdAt: new Date(r.created_at).toISOString() }));
   }
   async updateUserPassword(phone, passwordHash, salt) {
     const { rows } = await this.pool.query(
@@ -582,6 +592,11 @@ class PgStore {
   async updateUserPhoto(phone, photo) {
     const { rows } = await this.pool.query(
       'UPDATE users SET photo=$2 WHERE phone=$1 RETURNING *', [phone, photo || '']);
+    return rows.length ? userFromRow(rows[0]) : null;
+  }
+  async updateUserEmail(phone, email) {
+    const { rows } = await this.pool.query(
+      'UPDATE users SET email=$2, email_verified=$3 WHERE phone=$1 RETURNING *', [phone, email || '', !!email]);
     return rows.length ? userFromRow(rows[0]) : null;
   }
   async deleteUser(phone) {
