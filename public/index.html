@@ -1071,10 +1071,11 @@ $('#langBtn').addEventListener('click',()=>setLang(lang==='my'?'en':'my'));
 $('#themeBtn').addEventListener('click',()=>document.body.classList.toggle('dark'));
 
 // ---- init: login gate first ----
-// Referral link (?ref=CODE): the code is prefilled on the Register form,
-// and a logged-out visitor opens straight on the Register tab.
+// Referral link (?ref=CODE): the code is prefilled on the Register form
+// AND on the Google-login phone box, and a logged-out visitor opens
+// straight on the Register tab.
 const refParam=new URLSearchParams(location.search).get('ref');
-if(refParam){const f=$('#rgReferral');if(f)f.value=refParam.trim().toUpperCase();}
+if(refParam){const c=refParam.trim().toUpperCase();const f=$('#rgReferral');if(f)f.value=c;const g=$('#gReferral');if(g)g.value=c;}
 async function initAuth(){
   initGoogle();
   if(authToken&&isTokenUsable()){
