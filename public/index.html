@@ -127,6 +127,7 @@ body.dark #bottomNav button.active{background:#3a2f0b}
       <div id="googlePhoneBox" class="hidden" style="margin-top:8px">
         <p style="font-size:13px">Google အကောင့် (<b id="googleEmailLabel"></b>) နဲ့ ပထမဆုံး ဝင်တာပါ — ပို့ဖို့နဲ့ wallet အတွက် ဖုန်းနံပါတ် ရိုက်ထည့်ပါ</p>
         <input id="gPhone" placeholder="ဖုန်း / Phone" inputmode="tel">
+        <input id="gReferral" placeholder="Referral code (ရှိရင် ထည့်ပါ)">
         <button class="primary" id="googleLinkBtn" style="width:100%">ဆက်လုပ်မည်</button>
         <div id="googlePhoneErr" class="auth-err"></div>
       </div>
@@ -139,6 +140,7 @@ body.dark #bottomNav button.active{background:#3a2f0b}
       <input id="rgPhone" placeholder="ဖုန်း / Phone" inputmode="tel">
       <input id="rgPass" type="password" placeholder="Password (အနည်းဆုံး ၄ လုံး)">
       <input id="rgEmail" type="email" placeholder="Email (OTP ကုဒ် ပို့ဖို့ — မဖြစ်မနေ ထည့်ရမယ်)">
+      <input id="rgReferral" placeholder="Referral code (သူငယ်ချင်းရဲ့ code — ရှိရင် ထည့်ပါ)">
       <button class="primary" id="registerBtn" style="width:100%">Register လုပ်မည်</button>
       <div id="otpBox" class="hidden" style="margin-top:8px">
         <input id="otpCode" placeholder="OTP code (ဂဏန်း ၆ လုံး)" inputmode="numeric" maxlength="6">
@@ -196,7 +198,7 @@ body.dark #bottomNav button.active{background:#3a2f0b}
       <div id="wBalance" class="muted"></div>
       <div id="wLedger"></div>
       <h3 data-t="topup">ငွေဖြည့်မည် (Top-up)</h3>
-      <input id="tAmount" type="number" placeholder="ပမာဏ (Ks)">
+      <input id="tAmount" type="number" placeholder="ပမာဏ (Ks) — အနိမ့်ဆုံး 5,000">
       <select id="tMethod"><option value="kpay">KBZPay</option><option value="wavepay">WavePay</option></select>
       <div id="recipientBox" class="notice hidden"></div>
       <input id="tName" placeholder="ငွေလွှဲသူ နာမည်">
@@ -231,6 +233,17 @@ body.dark #bottomNav button.active{background:#3a2f0b}
       <input id="cpNew" type="password" placeholder="Password အသစ် (အနည်းဆုံး ၄ လုံး)">
       <button class="primary" id="cpBtn">Password ချိန်းမည်</button>
       <span id="cpMsg" class="muted"></span>
+    </div>
+
+    <div class="card">
+      <h2>🎁 သူငယ်ချင်းကို ညွှန်းမယ်</h2>
+      <p class="muted">သူငယ်ချင်းကို အောက်က code ပေးလိုက် — သူ register လုပ်ပြီး ပထမဆုံး ငွေသွင်း (အနိမ့်ဆုံး 5,000 Ks) အတည်ပြုပြီးရင် နှစ်ယောက်လုံး 3,000 Ks စီ လက်ဆောင်ရမယ်။ လက်ဆောင်က အရင် wallet ထဲ ဝင်မယ်၊ သူငွေသွင်းပြီးမှ သုံးလို့ရမယ်။</p>
+      <div id="myReferralCode" style="font-size:28px;font-weight:700;letter-spacing:3px;text-align:center">—</div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button class="primary" id="copyRefBtn" style="flex:1" onclick="copyReferralCode()">📋 Code ကူးမည်</button>
+        <button class="primary" id="shareRefBtn" style="flex:1" onclick="shareReferral()">🔗 Share လုပ်မည်</button>
+      </div>
+      <div id="refMsg" class="muted" style="text-align:center;margin-top:6px"></div>
     </div>
 
     <div class="card">
@@ -522,6 +535,9 @@ function authErrText(e){
   if(m.includes('invalid google token')||m.includes('missing credential'))return 'Google login မအောင်မြင်ဘူး — ပြန်ကြိုးစားပါ';
   if(m.includes('google email not verified'))return 'Google အီးမေးလ် အတည်မပြုရသေးဘူး';
   if(m.includes('phone linked to another email'))return 'ဒီဖုန်းက တခြား အီးမေးလ်နဲ့ ချိတ်ပြီးသား';
+  if(m.includes('invalid_referral_code'))return 'Referral code မမှန်ဘူး — ပြန်စစ်ကြည့်ပါ (သို့) ဗလာထားခဲ့ပါ';
+  if(m.includes('cannot_refer_self'))return 'ကိုယ့် code ကိုယ် သုံးလို့မရဘူး';
+  if(m.includes('topup_minimum_5000'))return 'ငွေဖြည့်တာ အနိမ့်ဆုံး 5,000 Ks ရှိရမယ်';
   return m||'Error';
 }
 $('#loginBtn').addEventListener('click',async()=>{
@@ -566,7 +582,7 @@ $('#googleLinkBtn').addEventListener('click',async()=>{
   const phone=$('#gPhone').value.trim();
   if(!phone){$('#googlePhoneErr').textContent='ဖုန်းနံပါတ် ထည့်ပေးပါ';return;}
   try{
-    const r=await api('/api/auth/google',{method:'POST',body:JSON.stringify({credential:googleCredential,phone})});
+    const r=await api('/api/auth/google',{method:'POST',body:JSON.stringify({credential:googleCredential,phone,referralCode:($('#gReferral').value||'').trim().toUpperCase()})});
     saveSession(r.token,r.user);
   }catch(e){$('#googlePhoneErr').textContent=authErrText(e)}
 });
@@ -593,7 +609,7 @@ $('#registerBtn').addEventListener('click',async()=>{
   const name=$('#rgName').value.trim(), phone=$('#rgPhone').value.trim(), password=$('#rgPass').value, email=$('#rgEmail').value.trim();
   $('#registerErr').textContent='';
   if(!email){$('#registerErr').textContent='Email ထည့်ဖို့ လိုတယ် — OTP ကုဒ် အတည်ပြုပြီးမှ Acc ဖွင့်လို့ရမယ်';return}
-  pendingReg={name,phone,password,email};
+  pendingReg={name,phone,password,email,referralCode:($('#rgReferral').value||'').trim().toUpperCase()};
   btn.disabled=true;btn.textContent='code ပို့နေတယ်...';
   try{
     await api('/api/auth/request-otp',{method:'POST',body:JSON.stringify({email,phone})});
@@ -607,7 +623,7 @@ $('#otpVerifyBtn').addEventListener('click',async()=>{
   if(!pendingReg)return;
   try{
     const v=await api('/api/auth/verify-otp',{method:'POST',body:JSON.stringify({email:pendingReg.email,code:$('#otpCode').value.trim()})});
-    const r=await api('/api/auth/register',{method:'POST',body:JSON.stringify({name:pendingReg.name,phone:pendingReg.phone,password:pendingReg.password,email:pendingReg.email,otpToken:v.otpToken})});
+    const r=await api('/api/auth/register',{method:'POST',body:JSON.stringify({name:pendingReg.name,phone:pendingReg.phone,password:pendingReg.password,email:pendingReg.email,otpToken:v.otpToken,referralCode:pendingReg.referralCode||''})});
     saveSession(r.token,r.user);
   }catch(e){$('#otpMsg').textContent=authErrText(e)}
 });
@@ -644,20 +660,34 @@ function showRecipient(){
 }
 window.copyRecipientPhone=async()=>{try{await navigator.clipboard.writeText(settings.recipientPhone||'');const c=$('#copyMsg');if(c)c.textContent='✅ ကူးပြီးပြီ';}catch(e){}};
 $('#tSubmit').addEventListener('click',async()=>{
+  const amt=Number($('#tAmount').value);
+  if(!Number.isFinite(amt)||amt<5000){$('#tMsg').innerHTML='<div class="notice">❌ ငွေဖြည့်တာ အနိမ့်ဆုံး 5,000 Ks ရှိရမယ်</div>';return}
   try{
-    const r=await api('/api/topups',{method:'POST',body:JSON.stringify({senderName:$('#tName').value,senderPhone:$('#tPhone').value,method:$('#tMethod').value,amount:Number($('#tAmount').value),transferId:$('#tTxn').value})});
+    const r=await api('/api/topups',{method:'POST',body:JSON.stringify({senderName:$('#tName').value,senderPhone:$('#tPhone').value,method:$('#tMethod').value,amount:amt,transferId:$('#tTxn').value})});
     $('#tMsg').innerHTML=`<div class="notice">✅ ${r.id} — ${fmt(r.amount)} · Admin အတည်ပြုဖို့ စောင့်နေတယ် (pending)</div>`;
     loadMyTopups();
-  }catch(e){$('#tMsg').innerHTML=`<div class="notice">❌ ${esc(e.message)}</div>`}
+  }catch(e){$('#tMsg').innerHTML=`<div class="notice">❌ ${esc(String(e.message||'').includes('topup_minimum_5000')?'ငွေဖြည့်တာ အနိမ့်ဆုံး 5,000 Ks ရှိရမယ်':e.message)}</div>`}
 });
+// Wallet display (shared by loadWallet + the 1s refresh): the spendable
+// balance, the locked referral gift (visible but not spendable), and the
+// ledger with Burmese labels for the referral entries.
+function walletTypeLabel(l){
+  if(l.type==='referral_bonus_locked')return '🎁 လက်ဆောင် (သော့ခတ်ထားတယ်)';
+  if(l.type==='referral_bonus_unlocked')return '🎁 လက်ဆောင် သုံးလို့ရပြီ';
+  return l.type;
+}
+function renderWallet(w){
+  const locked=w.locked||0;
+  $('#wBalance').innerHTML=`<b>Balance: ${fmt(w.balance)}</b>`+(locked>0?`<br><span class="muted">🎁 လက်ဆောင် (သော့ခတ်ထားတယ်): ${fmt(locked)} — သူငယ်ချင်း ပထမဆုံး ငွေသွင်းပြီးမှ သုံးလို့ရမယ်</span>`:'');
+  $('#wLedger').innerHTML=(w.ledger||[]).slice().reverse().map(l=>`<div class="muted">${(l.date||'').slice(0,10)} · ${walletTypeLabel(l)} ${fmt(l.amount)} ${l.transferId?esc(l.transferId):''} ${l.note?esc(l.note):''}</div>`).join('')||'<p class="muted">—</p>';
+}
 async function loadWallet(){
   const ph=authUser?authUser.phone:'';
   const wp=$('#wPhone');if(wp&&document.activeElement!==wp)wp.value=ph;
   if(!ph){$('#wBalance').innerHTML='<span class="muted">Login ဝင်မှ လက်ကျန် ပြမယ်</span>';$('#wLedger').innerHTML='';return}
   try{
     const w=await api('/api/wallet');
-    $('#wBalance').innerHTML=`<b>Balance: ${fmt(w.balance)}</b>`;
-    $('#wLedger').innerHTML=w.ledger.slice().reverse().map(l=>`<div class="muted">${l.date.slice(0,10)} · ${l.type} ${fmt(l.amount)} ${l.transferId?esc(l.transferId):''} ${l.note?esc(l.note):''}</div>`).join('')||'<p class="muted">—</p>';
+    renderWallet(w);
     loadMyTopups();
   }catch(e){$('#wBalance').innerHTML=`<div class="notice">❌ ${esc(e.message)}</div>`}
 }
@@ -671,8 +701,7 @@ async function refreshWalletBalance(){
   if($('#walletView').classList.contains('hidden'))return;
   try{
     const w=await api('/api/wallet');
-    $('#wBalance').innerHTML=`<b>Balance: ${fmt(w.balance)}</b>`;
-    $('#wLedger').innerHTML=w.ledger.slice().reverse().map(l=>`<div class="muted">${l.date.slice(0,10)} · ${l.type} ${fmt(l.amount)} ${l.transferId?esc(l.transferId):''} ${l.note?esc(l.note):''}</div>`).join('')||'<p class="muted">—</p>';
+    renderWallet(w);
     loadMyTopups();
   }catch(e){}
 }
@@ -935,7 +964,36 @@ function renderProfile(){
   // only, there is no input for it, so it cannot be edited from Profile.
   const em=authUser?authUser.email:(p.email||'');
   if(nm||ph){v.innerHTML=`<p>👤 <b>${esc(nm||'')}</b> · ${esc(ph||'')}</p>${em?`<p class="muted">📧 ${esc(em)}</p>`:''}${p.address?`<p class="muted">${esc(p.address)}</p>`:''}`}else{v.innerHTML='<p class="muted">—</p>'}
+  renderReferral();
 }
+// ---- Referral: show my code, copy it, or share the shop link with it ----
+// The code comes from the server account (authUser.referralCode) — the
+// server creates one for every account (old accounts get theirs on login).
+function renderReferral(){
+  const el=$('#myReferralCode');if(!el)return;
+  el.textContent=(authUser&&authUser.referralCode)||'—';
+}
+function referralLink(){
+  const code=(authUser&&authUser.referralCode)||'';
+  return location.origin+'/?ref='+encodeURIComponent(code);
+}
+window.copyReferralCode=async()=>{
+  const code=(authUser&&authUser.referralCode)||'';
+  if(!code)return;
+  try{await navigator.clipboard.writeText(code);$('#refMsg').textContent='✅ Code ကူးပြီးပြီ';}
+  catch(e){$('#refMsg').textContent='Code: '+code}
+};
+window.shareReferral=async()=>{
+  const code=(authUser&&authUser.referralCode)||'';
+  if(!code)return;
+  const text='ဈေးဆိုင်မှာ အကောင့်ဖွင့်ရင် ဒီ code ကို ထည့်ပါ — နှစ်ယောက်လုံး 3,000 Ks လက်ဆောင် ရမယ်။ Code: '+code;
+  const url=referralLink();
+  if(navigator.share){
+    try{await navigator.share({text,url});return}catch(e){/* user cancelled — fall through to copy */}
+  }
+  try{await navigator.clipboard.writeText(url);$('#refMsg').textContent='✅ လင့်ခ် ကူးပြီးပြီ — သူငယ်ချင်းကို ပို့လိုက်ပါ';}
+  catch(e){$('#refMsg').textContent=url}
+};
 function prefillProfile(){
   if(!authUser)return;
   $('#coName').value=profile.name||authUser.name;
@@ -1013,6 +1071,10 @@ $('#langBtn').addEventListener('click',()=>setLang(lang==='my'?'en':'my'));
 $('#themeBtn').addEventListener('click',()=>document.body.classList.toggle('dark'));
 
 // ---- init: login gate first ----
+// Referral link (?ref=CODE): the code is prefilled on the Register form,
+// and a logged-out visitor opens straight on the Register tab.
+const refParam=new URLSearchParams(location.search).get('ref');
+if(refParam){const f=$('#rgReferral');if(f)f.value=refParam.trim().toUpperCase();}
 async function initAuth(){
   initGoogle();
   if(authToken&&isTokenUsable()){
@@ -1023,6 +1085,7 @@ async function initAuth(){
     }catch(e){/* fall through to login screen */}
   }
   logout();
+  if(refParam)showAuth('register');
 }
 initAuth();
 </script>
