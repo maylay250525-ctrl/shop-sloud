@@ -51,6 +51,16 @@ const AUTH_SECRET = process.env.AUTH_SECRET || 'dev-only-secret';
 if (!process.env.AUTH_SECRET) console.log('warning: AUTH_SECRET not set, using dev fallback — set a random AUTH_SECRET in Render Environment');
 const SESSION_MS = 48 * 60 * 60 * 1000; // customer login lasts 48 hours
 
+// Referral program (added 2026-11-03): every customer has a short code
+// they can share. A friend who registers with the code gives BOTH of them
+// REFERRAL_BONUS Ks — but locked, not spendable. The gift only unlocks
+// (moves into the spendable balance) when the friend's first top-up is
+// approved, so fake accounts cannot farm free money: a locked gift is
+// worth nothing until real money is deposited. Minimum top-up is
+// MIN_TOPUP Ks, so that first deposit is always real money.
+const REFERRAL_BONUS = 3000;
+const MIN_TOPUP = 5000;
+
 let store; // set in start() before listening
 
 // Async-handler wrapper: forward errors to Express instead of hanging.
@@ -353,6 +363,83 @@ function requireAuth(req, res, next) {
 }
 
 // ---------------------------------------------------------------------------
+// Referral program helpers (see REFERRAL_BONUS / MIN_TOPUP above).
+// Codes are 6 chars from an unambiguous alphabet (no 0/O, 1/I) so a
+// customer can read one over the phone. A wallet's `locked` balance is
+// gift money that cannot be spent; unlocking moves it into `balance`.
+// Ledger entries record every grant/unlock, so the counts below are the
+// idempotency guard: a bonus unlocks only while locked grants outnumber
+// unlocks, so approving a second top-up can never pay it twice.
+// ---------------------------------------------------------------------------
+const REFERRAL_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function randomReferralCode() {
+  let c = '';
+  for (let i = 0; i < 6; i++) c += REFERRAL_CHARS[crypto.randomInt(REFERRAL_CHARS.length)];
+  return c;
+}
+async function newUniqueReferralCode() {
+  for (let i = 0; i < 10; i++) {
+    const c = randomReferralCode();
+    if (!(await store.getUserByReferralCode(c))) return c;
+  }
+  return 'R' + Date.now().toString(36).toUpperCase().slice(-5);
+}
+// Give an existing account (created before referrals) its code, once.
+async function ensureReferralCode(user) {
+  if (user.referralCode) return user.referralCode;
+  const code = await newUniqueReferralCode();
+  const u = await store.updateUserReferralCode(user.phone, code);
+  return (u && u.referralCode) || code;
+}
+// Validate a code typed at registration. Returns the referrer's phone,
+// or an error string ('invalid_referral_code' / 'cannot_refer_self').
+async function checkReferralCode(newPhone, code) {
+  const clean = String(code || '').trim().toUpperCase();
+  if (!clean) return { referrerPhone: '' };
+  const referrer = await store.getUserByReferralCode(clean);
+  if (!referrer) return { error: 'invalid_referral_code' };
+  if (referrer.phone === newPhone) return { error: 'cannot_refer_self' };
+  return { referrerPhone: referrer.phone };
+}
+function referralLockedCount(w) { return (w.ledger || []).filter(l => l.type === 'referral_bonus_locked').length; }
+function referralUnlockedCount(w) { return (w.ledger || []).filter(l => l.type === 'referral_bonus_unlocked').length; }
+async function grantLockedReferralBonus(friendPhone, referrerPhone) {
+  const note = 'သူငယ်ချင်း ညွှန်းလက်ဆောင် (သော့ခတ်ထားတယ်)';
+  const fw = await store.getWallet(friendPhone);
+  fw.locked = (fw.locked || 0) + REFERRAL_BONUS;
+  fw.ledger.push({ type: 'referral_bonus_locked', amount: REFERRAL_BONUS, transferId: null, date: new Date().toISOString(), note });
+  await store.saveWallet(friendPhone, fw);
+  const referrer = await store.getUserByPhone(referrerPhone);
+  if (!referrer) return; // referrer account deleted since — friend keeps theirs
+  const rw = await store.getWallet(referrerPhone);
+  rw.locked = (rw.locked || 0) + REFERRAL_BONUS;
+  rw.ledger.push({ type: 'referral_bonus_locked', amount: REFERRAL_BONUS, transferId: null, date: new Date().toISOString(), note });
+  await store.saveWallet(referrerPhone, rw);
+}
+// Unlock one locked gift on each side, when the referred friend's first
+// top-up is approved. Safe to call on every approval: the ledger counts
+// make a second unlock a no-op.
+async function maybeUnlockReferral(friendPhone) {
+  const user = await store.getUserByPhone(friendPhone);
+  if (!user || !user.referredBy) return;
+  const note = 'သူငယ်ချင်း ညွှန်းလက်ဆောင် သုံးလို့ရပြီ';
+  const fw = await store.getWallet(friendPhone);
+  if (referralLockedCount(fw) > referralUnlockedCount(fw) && (fw.locked || 0) >= REFERRAL_BONUS) {
+    fw.locked -= REFERRAL_BONUS;
+    fw.balance += REFERRAL_BONUS;
+    fw.ledger.push({ type: 'referral_bonus_unlocked', amount: REFERRAL_BONUS, transferId: null, date: new Date().toISOString(), note });
+    await store.saveWallet(friendPhone, fw);
+  }
+  const rw = await store.getWallet(user.referredBy);
+  if (referralLockedCount(rw) > referralUnlockedCount(rw) && (rw.locked || 0) >= REFERRAL_BONUS) {
+    rw.locked -= REFERRAL_BONUS;
+    rw.balance += REFERRAL_BONUS;
+    rw.ledger.push({ type: 'referral_bonus_unlocked', amount: REFERRAL_BONUS, transferId: null, date: new Date().toISOString(), note });
+    await store.saveWallet(user.referredBy, rw);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Health check — lightweight, no DB write, no auth.
 // External monitors (e.g. UptimeRobot) ping this every 5 minutes to keep a
 // Render free service awake so it does not spin down after 15 min idle.
@@ -377,7 +464,7 @@ async function deliveryFeeFor(township, subtotal) {
 // register again (409). Wallet balance stays keyed by phone, so an existing
 // wallet for that phone carries over to the new account automatically.
 app.post('/api/auth/register', ah(async (req, res) => {
-  const { name, phone, password, email, otpToken } = req.body || {};
+  const { name, phone, password, email, otpToken, referralCode } = req.body || {};
   if (!name || !String(name).trim() || !phone || !String(phone).trim() ||
       !password || String(password).length < 4) {
     return res.status(400).json({ error: 'name, phone and password (min 4 chars) required' });
@@ -394,16 +481,21 @@ app.post('/api/auth/register', ah(async (req, res) => {
   if (!verifyOtpToken(otpToken, cleanEmail)) return res.status(400).json({ error: 'email_verification_required' });
   const existing = await store.getUserByPhone(cleanPhone);
   if (existing) return res.status(409).json({ error: 'phone already registered' });
+  // Referral (optional): a friend's code gives both sides a locked gift.
+  const ref = await checkReferralCode(cleanPhone, referralCode);
+  if (ref.error) return res.status(400).json({ error: ref.error });
   const salt = crypto.randomBytes(16).toString('hex');
   const user = {
     id: 'u' + Date.now().toString(36),
     name: String(name).trim(), phone: cleanPhone,
     email: cleanEmail, emailVerified: true,
     passwordHash: hashPassword(String(password), salt), salt,
+    referralCode: await newUniqueReferralCode(), referredBy: ref.referrerPhone || '',
     createdAt: new Date().toISOString(),
   };
   await store.createUser(user);
-  res.status(201).json({ token: signToken(user), user: { id: user.id, name: user.name, phone: user.phone, email: user.email, photo: user.photo || '' } });
+  if (ref.referrerPhone) await grantLockedReferralBonus(cleanPhone, ref.referrerPhone);
+  res.status(201).json({ token: signToken(user), user: { id: user.id, name: user.name, phone: user.phone, email: user.email, photo: user.photo || '', referralCode: user.referralCode } });
 }));
 
 // Google login ("Sign in with Google"). The client sends Google's signed
@@ -419,7 +511,7 @@ app.post('/api/auth/register', ah(async (req, res) => {
 //     in. Google accounts get a random password hash they never use —
 //     password login stays available via an Admin reset.
 app.post('/api/auth/google', ah(async (req, res) => {
-  const { credential, phone, name } = req.body || {};
+  const { credential, phone, name, referralCode } = req.body || {};
   if (!GOOGLE_CLIENT_ID) return res.status(503).json({ error: 'google_not_configured' });
   if (!credential || typeof credential !== 'string') return res.status(400).json({ error: 'missing credential' });
   let payload;
@@ -440,7 +532,8 @@ app.post('/api/auth/google', ah(async (req, res) => {
     if ((u.email || '').toLowerCase() === email) { user = await store.getUserByPhone(u.phone); break; }
   }
   if (user) {
-    return res.json({ token: signToken(user), user: { id: user.id, name: user.name, phone: user.phone, email: user.email || '', photo: user.photo || '' } });
+    const code = await ensureReferralCode(user);
+    return res.json({ token: signToken(user), user: { id: user.id, name: user.name, phone: user.phone, email: user.email || '', photo: user.photo || '', referralCode: code } });
   }
   const cleanPhone = phone ? String(phone).trim() : '';
   if (!cleanPhone) {
@@ -456,8 +549,11 @@ app.post('/api/auth/google', ah(async (req, res) => {
     // and stay untouched).
     const linked = await store.updateUserEmail(cleanPhone, email);
     if (!linked) return res.status(500).json({ error: 'link failed' });
-    return res.json({ token: signToken(linked), user: { id: linked.id, name: linked.name, phone: linked.phone, email: linked.email || '', photo: linked.photo || '' } });
+    const code = await ensureReferralCode(linked);
+    return res.json({ token: signToken(linked), user: { id: linked.id, name: linked.name, phone: linked.phone, email: linked.email || '', photo: linked.photo || '', referralCode: code } });
   }
+  const ref = await checkReferralCode(cleanPhone, referralCode);
+  if (ref.error) return res.status(400).json({ error: ref.error });
   const salt = crypto.randomBytes(16).toString('hex');
   const randomPass = crypto.randomBytes(32).toString('hex');
   const fresh = {
@@ -465,10 +561,12 @@ app.post('/api/auth/google', ah(async (req, res) => {
     name: googleName || email.split('@')[0], phone: cleanPhone,
     email, emailVerified: true,
     passwordHash: hashPassword(randomPass, salt), salt,
+    referralCode: await newUniqueReferralCode(), referredBy: ref.referrerPhone || '',
     createdAt: new Date().toISOString(),
   };
   await store.createUser(fresh);
-  res.status(201).json({ token: signToken(fresh), user: { id: fresh.id, name: fresh.name, phone: fresh.phone, email: fresh.email, photo: fresh.photo || '' } });
+  if (ref.referrerPhone) await grantLockedReferralBonus(cleanPhone, ref.referrerPhone);
+  res.status(201).json({ token: signToken(fresh), user: { id: fresh.id, name: fresh.name, phone: fresh.phone, email: fresh.email, photo: fresh.photo || '', referralCode: fresh.referralCode } });
 }));
 
 // Login: returns a token valid for 48 hours.
@@ -478,14 +576,16 @@ app.post('/api/auth/login', ah(async (req, res) => {
   if (!user || hashPassword(String(password || ''), user.salt) !== user.passwordHash) {
     return res.status(401).json({ error: 'wrong phone or password' });
   }
-  res.json({ token: signToken(user), user: { id: user.id, name: user.name, phone: user.phone, email: user.email || '', photo: user.photo || '' } });
+  const code = await ensureReferralCode(user);
+  res.json({ token: signToken(user), user: { id: user.id, name: user.name, phone: user.phone, email: user.email || '', photo: user.photo || '', referralCode: code } });
 }));
 
 // Who is logged in (token check).
 app.get('/api/auth/me', requireAuth, ah(async (req, res) => {
   const user = await store.getUserByPhone(req.user.phone);
   if (!user) return res.status(401).json({ error: 'login required' });
-  res.json({ id: user.id, name: user.name, phone: user.phone, email: user.email || '', photo: user.photo || '' });
+  const code = await ensureReferralCode(user);
+  res.json({ id: user.id, name: user.name, phone: user.phone, email: user.email || '', photo: user.photo || '', referralCode: code });
 }));
 
 // Change own password (logged in).
@@ -590,11 +690,13 @@ app.get('/api/orders', requireAuth, ah(async (req, res) => {
   res.json(orders.filter(o => o.phone === phone));
 }));
 
-// Wallet balance + ledger for the logged-in customer
+// Wallet balance + ledger for the logged-in customer.
+// `locked` is referral gift money that cannot be spent yet — it unlocks
+// into the balance when the referred friend's first top-up is approved.
 app.get('/api/wallet', requireAuth, ah(async (req, res) => {
   const phone = req.user.phone;
   const w = await store.getWallet(phone);
-  res.json({ phone, balance: w.balance, ledger: w.ledger });
+  res.json({ phone, balance: w.balance, locked: w.locked || 0, ledger: w.ledger });
 }));
 
 // Top-up requests for the logged-in customer
@@ -613,6 +715,10 @@ app.post('/api/topups', requireAuth, ah(async (req, res) => {
       !Number.isFinite(Number(amount)) || Number(amount) <= 0 || !transferId) {
     return res.status(400).json({ error: 'missing or invalid fields' });
   }
+  // Minimum top-up is 5,000 Ks (set 2026-11-03): tiny top-ups cost more
+  // in admin time than they are worth, and the referral gift only unlocks
+  // on a first top-up — so that first deposit must be real money.
+  if (Number(amount) < MIN_TOPUP) return res.status(400).json({ error: 'topup_minimum_5000' });
   const dup = await store.findTopupByTransfer(method, String(transferId).trim());
   if (dup) return res.status(409).json({ error: 'duplicate transfer ID for this method' });
   const n = await store.nextCounter('topup');
@@ -834,6 +940,9 @@ app.post('/api/admin/topups/:id/approve', requireAdmin, ah(async (req, res) => {
   w.balance += t.amount; // credit exactly once — status is now approved
   w.ledger.push({ type: 'credit', amount: t.amount, transferId: t.transferId, date: new Date().toISOString(), note: 'top-up approved' });
   await store.saveWallet(t.senderPhone, w);
+  // Referral unlock: if this was the sender's first approved top-up and
+  // they registered with a friend's code, both locked gifts unlock now.
+  await maybeUnlockReferral(t.senderPhone);
   res.json({ topup: { ...t, status: 'approved' }, balance: w.balance });
 }));
 
@@ -1139,6 +1248,24 @@ app.post('/api/admin/ai/suggest', requireAdmin, ah(async (req, res) => {
 
 // Customer accounts (no password hashes are ever sent out).
 app.get('/api/admin/users', requireAdmin, ah(async (req, res) => res.json(await store.listUsers())));
+
+// Referral list (Admin-only): every account that registered with a
+// friend's code. Status is derived, not stored: a referral is 'unlocked'
+// once the friend has at least one approved top-up (that approval is
+// what unlocked both locked gifts), otherwise 'locked'.
+app.get('/api/admin/referrals', requireAdmin, ah(async (req, res) => {
+  const users = await store.listUsers();
+  const topups = await store.listTopups();
+  const byPhone = Object.fromEntries(users.map(u => [u.phone, u]));
+  const hasApprovedTopup = {};
+  for (const tp of topups) if (tp.status === 'approved') hasApprovedTopup[tp.senderPhone] = true;
+  res.json(users.filter(u => u.referredBy).map(u => ({
+    friendName: u.name, friendPhone: u.phone, friendJoined: u.createdAt,
+    referrerName: (byPhone[u.referredBy] && byPhone[u.referredBy].name) || u.referredBy,
+    referrerPhone: u.referredBy, amount: REFERRAL_BONUS,
+    status: hasApprovedTopup[u.phone] ? 'unlocked' : 'locked',
+  })));
+}));
 
 // Admin resets a customer's password (for "forgot password": the customer
 // calls the admin, the admin sets a temporary password here, and the

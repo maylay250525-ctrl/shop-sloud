@@ -156,7 +156,7 @@ class JsonStore {
     this._persist();
     return true;
   }
-  async getWallet(phone) { return this.db.wallets[phone] || { balance: 0, ledger: [] }; }
+  async getWallet(phone) { return this.db.wallets[phone] || { balance: 0, locked: 0, ledger: [] }; }
   async saveWallet(phone, wallet) { this.db.wallets[phone] = wallet; this._persist(); return wallet; }
   // Deletes the whole wallet row (balance + ledger). Admin-only cleanup
   // for test wallets / wallets of deleted accounts.
@@ -168,7 +168,21 @@ class JsonStore {
   }
   async getUserByPhone(phone) { return this.db.users.find(u => u.phone === phone) || null; }
   async createUser(u) { this.db.users.push(u); this._persist(); return u; }
-  async listUsers() { return this.db.users.map(u => ({ id: u.id, name: u.name, phone: u.phone, email: u.email || '', createdAt: u.createdAt })); }
+  async listUsers() { return this.db.users.map(u => ({ id: u.id, name: u.name, phone: u.phone, email: u.email || '', createdAt: u.createdAt, referralCode: u.referralCode || '', referredBy: u.referredBy || '' })); }
+  async getUserByReferralCode(code) {
+    const c = String(code || '').trim().toUpperCase();
+    if (!c) return null;
+    return this.db.users.find(u => (u.referralCode || '').toUpperCase() === c) || null;
+  }
+  // Assign (or re-assign) a referral code to an existing user — used to
+  // give the pre-referral accounts (YeMin, Lay Lay) a code on first login.
+  async updateUserReferralCode(phone, code) {
+    const u = this.db.users.find(x => x.phone === phone);
+    if (!u) return null;
+    u.referralCode = code;
+    this._persist();
+    return u;
+  }
   async updateUserPassword(phone, passwordHash, salt) {
     const u = this.db.users.find(x => x.phone === phone);
     if (!u) return null;
@@ -206,7 +220,7 @@ class JsonStore {
     this._persist();
   }
   async listWallets() {
-    return Object.entries(this.db.wallets).map(([phone, w]) => ({ phone, balance: w.balance, ledger: w.ledger }));
+    return Object.entries(this.db.wallets).map(([phone, w]) => ({ phone, balance: w.balance, locked: w.locked || 0, ledger: w.ledger }));
   }
   // Full data export for backups: everything needed to restore the shop.
   // Users include password hashes + salts (needed so restored accounts can
@@ -339,6 +353,7 @@ function userFromRow(r) {
     passwordHash: r.password_hash, salt: r.salt,
     createdAt: new Date(r.created_at).toISOString(),
     photo: r.photo || '', email: r.email || '', emailVerified: !!r.email_verified,
+    referralCode: r.referral_code || '', referredBy: r.referred_by || '',
   };
 }
 function chatMessageFromRow(r) {
@@ -369,6 +384,16 @@ class PgStore {
     // flow (Admin → Settings → "Gmail ချိတ်မည်") so OTP mail can be sent
     // without pasting tokens (added 2026-11-02).
     await this.pool.query('ALTER TABLE settings ADD COLUMN IF NOT EXISTS gmail_refresh_token TEXT');
+    // Migration: referral program (added 2026-11-03) — each user gets a
+    // short shareable code; a new account created with a friend's code
+    // records who referred them. Codes are unique (NULLs never clash).
+    await this.pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_code TEXT');
+    await this.pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS referred_by TEXT');
+    await this.pool.query('CREATE UNIQUE INDEX IF NOT EXISTS users_referral_code_idx ON users (referral_code)');
+    // Migration: locked referral bonus on the wallet (added 2026-11-03) —
+    // the 3,000 Ks gift sits here (not in balance, so it cannot be spent)
+    // until the referred friend's first top-up is approved.
+    await this.pool.query('ALTER TABLE wallet_entries ADD COLUMN IF NOT EXISTS locked INTEGER NOT NULL DEFAULT 0');
     // Seed once, when tables are empty.
     const { rows } = await this.pool.query('SELECT COUNT(*)::int AS n FROM products');
     if (rows[0].n === 0) {
@@ -494,14 +519,14 @@ class PgStore {
   }
   async getWallet(phone) {
     const { rows } = await this.pool.query('SELECT * FROM wallet_entries WHERE phone = $1', [phone]);
-    if (!rows.length) return { balance: 0, ledger: [] };
-    return { balance: rows[0].balance, ledger: rows[0].ledger };
+    if (!rows.length) return { balance: 0, locked: 0, ledger: [] };
+    return { balance: rows[0].balance, locked: rows[0].locked || 0, ledger: rows[0].ledger };
   }
   async saveWallet(phone, wallet) {
     await this.pool.query(
-      `INSERT INTO wallet_entries (phone, balance, ledger) VALUES ($1,$2,$3)
-       ON CONFLICT (phone) DO UPDATE SET balance=EXCLUDED.balance, ledger=EXCLUDED.ledger`,
-      [phone, wallet.balance, JSON.stringify(wallet.ledger)]);
+      `INSERT INTO wallet_entries (phone, balance, locked, ledger) VALUES ($1,$2,$3,$4)
+       ON CONFLICT (phone) DO UPDATE SET balance=EXCLUDED.balance, locked=EXCLUDED.locked, ledger=EXCLUDED.ledger`,
+      [phone, wallet.balance, wallet.locked || 0, JSON.stringify(wallet.ledger)]);
     return wallet;
   }
   // Deletes the whole wallet row (balance + ledger).
@@ -511,7 +536,7 @@ class PgStore {
   }
   async listWallets() {
     const { rows } = await this.pool.query('SELECT * FROM wallet_entries ORDER BY phone');
-    return rows.map(r => ({ phone: r.phone, balance: r.balance, ledger: r.ledger }));
+    return rows.map(r => ({ phone: r.phone, balance: r.balance, locked: r.locked || 0, ledger: r.ledger }));
   }
   // Full data export for backups (see JsonStore.exportAll).
   async exportAll() {
@@ -585,13 +610,24 @@ class PgStore {
   }
   async createUser(u) {
     await this.pool.query(
-      'INSERT INTO users (id, name, phone, password_hash, salt, created_at, email, email_verified) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
-      [u.id, u.name, u.phone, u.passwordHash, u.salt, u.createdAt, u.email || '', !!u.emailVerified]);
+      'INSERT INTO users (id, name, phone, password_hash, salt, created_at, email, email_verified, referral_code, referred_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
+      [u.id, u.name, u.phone, u.passwordHash, u.salt, u.createdAt, u.email || '', !!u.emailVerified, u.referralCode || null, u.referredBy || null]);
     return u;
   }
   async listUsers() {
-    const { rows } = await this.pool.query('SELECT id, name, phone, email, created_at FROM users ORDER BY created_at DESC');
-    return rows.map(r => ({ id: r.id, name: r.name, phone: r.phone, email: r.email || '', createdAt: new Date(r.created_at).toISOString() }));
+    const { rows } = await this.pool.query('SELECT id, name, phone, email, created_at, referral_code, referred_by FROM users ORDER BY created_at DESC');
+    return rows.map(r => ({ id: r.id, name: r.name, phone: r.phone, email: r.email || '', createdAt: new Date(r.created_at).toISOString(), referralCode: r.referral_code || '', referredBy: r.referred_by || '' }));
+  }
+  async getUserByReferralCode(code) {
+    const c = String(code || '').trim().toUpperCase();
+    if (!c) return null;
+    const { rows } = await this.pool.query('SELECT * FROM users WHERE UPPER(referral_code) = $1', [c]);
+    return rows.length ? userFromRow(rows[0]) : null;
+  }
+  async updateUserReferralCode(phone, code) {
+    const { rows } = await this.pool.query(
+      'UPDATE users SET referral_code=$2 WHERE phone=$1 RETURNING *', [phone, code]);
+    return rows.length ? userFromRow(rows[0]) : null;
   }
   async updateUserPassword(phone, passwordHash, salt) {
     const { rows } = await this.pool.query(
