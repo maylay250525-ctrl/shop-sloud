@@ -6,15 +6,16 @@
 <title>ဈေးဆိုင်</title>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
-:root{--bg:#faf6ee;--card:#fff;--text:#222;--muted:#8a8378;--accent:#0e7a4d;--accent2:#f59e0b;--line:#eee5d5;--shadow:0 2px 14px rgba(60,45,20,.07)}
+:root{--bg:#0b1e3a;--card:#fff;--text:#1e293b;--muted:#64748b;--accent:#b45309;--accent2:#d4af37;--line:#dbe4f0;--shadow:0 2px 14px rgba(8,24,48,.25)}
 body.dark{--bg:#16181d;--card:#23262e;--text:#f0f0f0;--muted:#9aa0ae;--line:#343842;--shadow:0 2px 14px rgba(0,0,0,.35)}
 *{box-sizing:border-box}
 body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);padding-bottom:76px}
-header{position:sticky;top:0;background:linear-gradient(135deg,#0e7a4d,#12a150);padding:12px 14px;display:flex;gap:8px;align-items:center;z-index:10;flex-wrap:wrap;box-shadow:0 2px 12px rgba(14,122,77,.35)}
+body:not(.dark){background:linear-gradient(180deg,#102a54,#081830)}
+header{position:sticky;top:0;background:linear-gradient(135deg,#102a54,#081830);padding:12px 14px;display:flex;gap:8px;align-items:center;z-index:10;flex-wrap:wrap;box-shadow:0 2px 12px rgba(8,24,48,.4);border-bottom:2px solid #d4af37}
 header h1{font-size:20px;margin:0;flex:1;color:#fff}
 header button{background:rgba(255,255,255,.18);color:#fff;border-color:rgba(255,255,255,.4)}
 button{cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:12px;padding:10px 14px;font-size:14px;font-weight:600}
-button.primary{background:linear-gradient(135deg,#0e7a4d,#12a150);color:#fff;border-color:transparent;box-shadow:0 2px 8px rgba(14,122,77,.35)}
+button.primary{background:linear-gradient(135deg,#e3c566,#d4af37);color:#111827;border-color:transparent;box-shadow:0 2px 8px rgba(212,175,55,.35)}
 button.warn{background:#b3261e;color:#fff;border-color:#b3261e}
 input,select,textarea{width:100%;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--text);font-size:15px;margin:5px 0}
 input:disabled{opacity:.65}
@@ -22,10 +23,10 @@ main{max-width:960px;margin:0 auto;padding:14px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:14px;box-shadow:var(--shadow)}
 .card h2{margin:0 0 10px;font-size:18px}
 .card h3{margin:14px 0 6px;font-size:15px}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
 .prod{border:1px solid var(--line);border-radius:16px;padding:10px;display:flex;flex-direction:column;background:var(--card)}
-.prod-emoji{font-size:46px;text-align:center;padding:16px 0 12px;border-radius:12px;margin-bottom:8px}
-.prod-img{width:100%;height:110px;object-fit:cover;border-radius:12px;margin-bottom:8px}
+.prod-emoji{height:220px;display:flex;align-items:center;justify-content:center;font-size:64px;border-radius:12px;margin-bottom:8px}
+.prod-img{width:100%;height:220px;object-fit:cover;border-radius:12px;margin-bottom:8px;cursor:pointer}
 #announceBar{display:flex;align-items:center;gap:8px;background:#fff;color:#000;padding:8px 10px;border-bottom:1px solid #eee;box-shadow:0 2px 8px rgba(0,0,0,.08);font-size:14px;font-weight:600}
 .ann-view{flex:1;overflow:hidden;white-space:nowrap}
 #announceTrack{display:inline-block;padding-left:100%;will-change:transform;animation-name:announceScroll;animation-timing-function:linear;animation-iteration-count:infinite}
@@ -51,7 +52,7 @@ main{max-width:960px;margin:0 auto;padding:14px}
 .muted{color:var(--muted);font-size:13px}
 .chips{display:flex;gap:6px;overflow-x:auto;padding:6px 0 2px;-webkit-overflow-scrolling:touch}
 .chips button{flex:0 0 auto;border-radius:20px;padding:8px 14px}
-.chips button.active{background:linear-gradient(135deg,#0e7a4d,#12a150);color:#fff;border-color:transparent}
+.chips button.active{background:linear-gradient(135deg,#e3c566,#d4af37);color:#111827;border-color:transparent}
 table{width:100%;border-collapse:collapse;font-size:14px}
 th,td{border-bottom:1px solid var(--line);padding:7px 5px;text-align:left;vertical-align:top}
 .badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:12px;background:#eee;color:#333}
@@ -67,18 +68,18 @@ body.dark .notice{background:#3a3220;color:#f0d9a0}
 .addbtn{width:100%;margin-top:10px}
 #bottomNav{position:fixed;left:0;right:0;bottom:0;z-index:20;display:flex;background:var(--card);border-top:1px solid var(--line);padding:8px 6px calc(8px + env(safe-area-inset-bottom));box-shadow:0 -4px 16px rgba(60,45,20,.08);border-radius:16px 16px 0 0}
 #bottomNav button{flex:1;border:0;background:none;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:12px;padding:8px 2px;color:var(--muted);position:relative;border-radius:12px}
-#bottomNav button.active{color:var(--accent);font-weight:800;background:#e9f7ef}
-body.dark #bottomNav button.active{background:#1d3a2c}
+#bottomNav button.active{color:var(--accent);font-weight:800;background:#fef6dd}
+body.dark #bottomNav button.active{background:#3a2f0b}
 #bottomNav button .ic{font-size:22px;line-height:1}
 .navbadge{position:absolute;top:2px;right:calc(50% - 24px);background:#e11d48;color:#fff;border-radius:20px;font-size:11px;padding:1px 6px;font-weight:700}
-#authScreen{min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:32px 16px;background:linear-gradient(160deg,#0e7a4d,#0b5e3c 55%,#084d31)}
+#authScreen{min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:32px 16px;background:linear-gradient(160deg,#102a54,#0b1e3a 55%,#081830)}
 .auth-card{background:#fff;color:#222;border-radius:24px;padding:28px 22px;max-width:400px;width:100%;box-shadow:0 16px 48px rgba(0,0,0,.3);text-align:center;margin-top:4vh}
 .auth-card input{background:#fff;color:#222;border-color:#e5ddd0}
 .auth-logo{font-size:60px;line-height:1}
 .auth-card h1{margin:8px 0 4px;font-size:26px}
 .auth-tabs{display:flex;gap:8px;margin:18px 0 14px}
 .auth-tabs button{flex:1;border-radius:999px;padding:10px}
-.auth-tabs button.active{background:linear-gradient(135deg,#0e7a4d,#12a150);color:#fff;border-color:transparent}
+.auth-tabs button.active{background:linear-gradient(135deg,#e3c566,#d4af37);color:#111827;border-color:transparent}
 .auth-err{color:#b3261e;font-size:13px;min-height:18px;margin-top:8px}
 .auth-link{background:none;border:0;color:var(--accent);font-size:13px;margin-top:12px;text-decoration:underline;padding:4px}
 /* Splash screen — dark + gold, shows on every page load for ~3s (logged in or not), then fades */
@@ -152,7 +153,7 @@ body.dark #bottomNav button.active{background:#1d3a2c}
 </div>
 
 <header id="shopHeader" class="hidden">
-  <h1>🛒 <span data-t="shop">ဈေးဆိုင်</span></h1>
+  <h1><span style="display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border:2px solid #d4af37;border-radius:50%;color:#d4af37;font-size:17px;margin-right:6px;vertical-align:-6px">ဈ</span><span data-t="shop">ဈေးဆိုင်</span></h1>
   <button id="langBtn">English</button>
   <button id="themeBtn">🌙</button>
   <button id="cartBtn">🛒 <span id="cartBadge" class="badge hidden">0</span></button>
@@ -366,8 +367,10 @@ function renderProducts(){
     const cat=lang==='en'?p.categoryEn:p.category;
     return nm.includes(q)&&(!selectedCat||cat===selectedCat);
   });
-  $('#products').innerHTML=list.map(p=>`<div class="prod">${p.image?`<img class="prod-img" src="${esc(p.image)}" alt="">`:`<div class="prod-emoji" style="background:${catTint(p)}">${prodEmoji(p)}</div>`}<div class="row"><h3>${esc(lang==='en'?p.nameEn:p.name)}</h3><button class="favbtn" onclick="toggleFav('${p.id}')">${favs.includes(p.id)?'★':'☆'}</button></div><div class="muted">${esc(lang==='en'?p.categoryEn:p.category)} · stock ${p.stock}</div><div class="price">${fmt(p.price)}</div><button class="primary addbtn" onclick="addCart('${p.id}')">+ Cart</button></div>`).join('')||'<p class="muted">—</p>';
+  $('#products').innerHTML=list.map(p=>`<div class="prod">${p.image?`<img class="prod-img" src="${esc(p.image)}" alt="" onclick="viewProductPhoto('${p.id}')">`:`<div class="prod-emoji" style="background:${catTint(p)}">${prodEmoji(p)}</div>`}<div class="row"><h3>${esc(lang==='en'?p.nameEn:p.name)}</h3><button class="favbtn" onclick="toggleFav('${p.id}')">${favs.includes(p.id)?'★':'☆'}</button></div><div class="muted">${esc(lang==='en'?p.categoryEn:p.category)} · stock ${p.stock}</div><div class="price">${fmt(p.price)}</div><button class="primary addbtn" onclick="addCart('${p.id}')">+ Cart</button></div>`).join('')||'<p class="muted">—</p>';
 }
+// ---- Product photo: tap the photo to view it full-screen (reuses the profile photo viewer) ----
+window.viewProductPhoto=id=>{const p=products.find(x=>x.id===id);if(!p||!p.image)return;$('#photoViewerImg').src=p.image;$('#photoViewer').classList.remove('hidden')};
 window.addCart=id=>{cart[id]=(cart[id]||0)+1;renderCart()};
 window.toggleFav=id=>{favs=favs.includes(id)?favs.filter(x=>x!==id):[...favs,id];localStorage.setItem('favs',JSON.stringify(favs));renderProducts();renderFavs()};
 function cartCount(){return Object.values(cart).reduce((s,q)=>s+q,0)}
