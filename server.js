@@ -440,6 +440,97 @@ async function maybeUnlockReferral(friendPhone) {
 }
 
 // ---------------------------------------------------------------------------
+// Daily check-in points ("day point", added 2026-11-06).
+// A consecutive-day streak: Days 1-6 double each day (1, 2, 4, 8, 16, 32
+// points); missing one day resets the streak to Day 1. Day 7 is a prize
+// box: a random draw from the shared 100,000-point pool (minimum 500
+// guaranteed when the pool can afford it; if less remains, the finisher
+// gets the remainder). The pool refills to 100,000 every Monday 00:00
+// Asia/Rangoon and immediately when exhausted. After a Day 7 claim the
+// streak resets to 0. Rate: 1,000 points = 500 Ks (1 pt = 0.5 Ks).
+// Points are LOCKED until the user has an approved top-up of at least
+// 5,000 Ks (same anti-abuse idea as the referral gift); after that they
+// stay usable. Per-user points live on the user record, pool state in
+// settings — no new top-level key in the backup export.
+// ---------------------------------------------------------------------------
+const POINTS_POOL_SIZE = 100000;
+const POINTS_DAY7_MIN = 500;
+const POINTS_DAY_REWARDS = [1, 2, 4, 8, 16, 32]; // Days 1-6
+const POINTS_CONVERT_MIN = 100;   // convert in multiples of 100 points
+const POINTS_CONVERT_STEP = 100;  // (= 50 Ks each) so Ks stays whole
+const POINTS_ADMIN_MAX = 100000;
+// Myanmar has no daylight saving, so Asia/Rangoon is a fixed +06:30.
+// Shift "now" by that offset and read UTC parts to get Rangoon dates.
+const RANGOON_OFFSET_MS = 6.5 * 60 * 60 * 1000;
+function rangoonParts(d) {
+  const r = new Date(d.getTime() + RANGOON_OFFSET_MS);
+  return { y: r.getUTCFullYear(), m: r.getUTCMonth(), d: r.getUTCDate(), dow: r.getUTCDay() };
+}
+function rangoonDateStr(d) {
+  const p = rangoonParts(d);
+  return p.y + '-' + String(p.m + 1).padStart(2, '0') + '-' + String(p.d).padStart(2, '0');
+}
+function rangoonToday() { return rangoonDateStr(new Date()); }
+function rangoonYesterday() { return rangoonDateStr(new Date(Date.now() - 24 * 60 * 60 * 1000)); }
+// Monday (00:00 Rangoon) starting the current week, as 'YYYY-MM-DD'.
+function rangoonMondayKey() {
+  const now = new Date();
+  const p = rangoonParts(now);
+  const back = (p.dow + 6) % 7; // Mon -> 0, Tue -> 1, ..., Sun -> 6
+  return rangoonDateStr(new Date(now.getTime() - back * 24 * 60 * 60 * 1000));
+}
+// Read points fields off a user record with defaults for accounts created
+// before day points (their fields are simply absent).
+function normPoints(user) {
+  return {
+    available: Number(user.pointsAvailable) || 0,
+    locked: Number(user.pointsLocked) || 0,
+    streak: Number(user.pointsStreak) || 0,
+    lastCheckin: user.pointsLastCheckin || '',
+    ledger: Array.isArray(user.pointsLedger) ? user.pointsLedger : [],
+  };
+}
+function pointsLedgerPush(p, entry) {
+  const ledger = [...(p.ledger || []), { ...entry, date: new Date().toISOString() }];
+  return ledger.length > 100 ? ledger.slice(-100) : ledger; // keep the last 100
+}
+// Has this phone had an approved top-up of at least MIN_TOPUP Ks? In
+// practice that means their first approved top-up (the minimum top-up is
+// 5,000 Ks), which is what unlocks locked points.
+async function hasApprovedTopup(phone) {
+  const topups = await store.listTopups();
+  return topups.some(t => t.senderPhone === phone && t.status === 'approved' && Number(t.amount) >= MIN_TOPUP);
+}
+// Pool state, refilling when the week has rolled over to a new Monday or
+// when the pool is exhausted (remaining <= 0). Returns { remaining, week }.
+async function getPoolState() {
+  const settings = await store.getSettings();
+  const week = rangoonMondayKey();
+  let remaining = settings.pointsPoolRemaining;
+  if (remaining === undefined || remaining === null) remaining = POINTS_POOL_SIZE;
+  if (settings.pointsPoolWeek !== week || remaining <= 0) {
+    remaining = POINTS_POOL_SIZE;
+    await store.updateSettings({ pointsPoolRemaining: remaining, pointsPoolWeek: week });
+  }
+  return { remaining, week };
+}
+// Unlock a user's locked points once they have an approved top-up: move
+// them into the usable balance (one entry, so a second call is a no-op
+// because locked is then 0).
+async function maybeUnlockPoints(phone) {
+  const user = await store.getUserByPhone(phone);
+  if (!user) return;
+  const p = normPoints(user);
+  if (p.locked <= 0) return;
+  if (!(await hasApprovedTopup(phone))) return;
+  const ledger = pointsLedgerPush(p, { type: 'points_unlocked', points: p.locked, note: 'ပထမဆုံး ငွေသွင်း အတည်ပြုပြီးပြီ — Point သုံးလို့ရပြီ' });
+  await store.updateUserPoints(phone, { pointsAvailable: p.available + p.locked, pointsLocked: 0, pointsLedger: ledger });
+}
+// One check-in per phone at a time: without this, two rapid taps could
+// both read the same streak and award twice (Node interleaves handlers
+// at awaits). The lock is in-process only, which is all this server has.
+const checkinLocks = new Set();
+
 // Health check — lightweight, no DB write, no auth.
 // External monitors (e.g. UptimeRobot) ping this every 5 minutes to keep a
 // Render free service awake so it does not spin down after 15 min idle.
@@ -699,6 +790,142 @@ app.get('/api/wallet', requireAuth, ah(async (req, res) => {
   res.json({ phone, balance: w.balance, locked: w.locked || 0, ledger: w.ledger });
 }));
 
+// ---------------------------------------------------------------------------
+// Daily check-in points — customer endpoints (token phone only).
+// ---------------------------------------------------------------------------
+// My points state: balances, streak, whether today is claimed, what the
+// next check-in pays, and the shared Day 7 pool.
+app.get('/api/points', requireAuth, ah(async (req, res) => {
+  const user = await store.getUserByPhone(req.user.phone);
+  if (!user) return res.status(401).json({ error: 'login required' });
+  const p = normPoints(user);
+  const pool = await getPoolState();
+  const today = rangoonToday();
+  const claimedToday = p.lastCheckin === today;
+  const nextDay = claimedToday ? null : (p.lastCheckin === rangoonYesterday() ? p.streak + 1 : 1);
+  res.json({
+    available: p.available, locked: p.locked, streak: p.streak,
+    lastCheckin: p.lastCheckin, claimedToday, nextDay,
+    nextReward: nextDay && nextDay <= 6 ? POINTS_DAY_REWARDS[nextDay - 1] : null,
+    isDay7: nextDay === 7,
+    unlocked: await hasApprovedTopup(req.user.phone),
+    poolRemaining: pool.remaining,
+    history: [...p.ledger].reverse().slice(0, 20),
+  });
+}));
+
+// Claim today's check-in. Consecutive days only: if yesterday was not
+// claimed, the streak restarts at Day 1. Day 7 draws from the pool.
+app.post('/api/points/checkin', requireAuth, ah(async (req, res) => {
+  const phone = req.user.phone;
+  if (checkinLocks.has(phone)) return res.status(409).json({ error: 'checkin_in_progress' });
+  checkinLocks.add(phone);
+  try {
+    const user = await store.getUserByPhone(phone);
+    if (!user) return res.status(401).json({ error: 'login required' });
+    const p = normPoints(user);
+    const today = rangoonToday();
+    if (p.lastCheckin === today) return res.status(409).json({ error: 'already_checked_in' });
+    const day = p.lastCheckin === rangoonYesterday() ? p.streak + 1 : 1;
+    let award, isDay7 = false, poolRemaining = null;
+    if (day >= 7) {
+      // Day 7 prize box: random draw between POINTS_DAY7_MIN and the
+      // remaining pool (minimum guaranteed when the pool can afford it;
+      // if less remains, the finisher gets the remainder).
+      isDay7 = true;
+      const pool = await getPoolState();
+      const remaining = pool.remaining;
+      award = remaining >= POINTS_DAY7_MIN
+        ? crypto.randomInt(POINTS_DAY7_MIN, remaining + 1)
+        : remaining;
+      poolRemaining = remaining - award;
+      await store.updateSettings({ pointsPoolRemaining: poolRemaining, pointsPoolWeek: pool.week });
+    } else {
+      award = POINTS_DAY_REWARDS[day - 1];
+    }
+    const unlocked = await hasApprovedTopup(phone);
+    const ledger = pointsLedgerPush(p, { type: 'points_checkin', points: award, day: isDay7 ? 7 : day, note: isDay7 ? 'Day 7 ဆုကြီး' : 'Day ' + day + ' check-in' });
+    const patch = {
+      pointsAvailable: p.available + (unlocked ? award : 0),
+      pointsLocked: p.locked + (unlocked ? 0 : award),
+      pointsStreak: isDay7 ? 0 : day, // after Day 7 a new cycle starts at Day 1
+      pointsLastCheckin: today,
+      pointsLedger: ledger,
+    };
+    await store.updateUserPoints(phone, patch);
+    if (poolRemaining === null) poolRemaining = (await getPoolState()).remaining;
+    res.json({ day: isDay7 ? 7 : day, points: award, isDay7, streak: patch.pointsStreak, available: patch.pointsAvailable, locked: patch.pointsLocked, claimedToday: true, poolRemaining });
+  } finally {
+    checkinLocks.delete(phone);
+  }
+}));
+
+// Convert points to wallet Ks: 1,000 points = 500 Ks (1 pt = 0.5 Ks).
+// In multiples of 100 points (= 50 Ks) so the Ks amount stays whole.
+// A single fast DB op — no artificial delay.
+app.post('/api/points/convert', requireAuth, ah(async (req, res) => {
+  const phone = req.user.phone;
+  const points = Number((req.body || {}).points);
+  if (!Number.isInteger(points) || points < POINTS_CONVERT_MIN || points % POINTS_CONVERT_STEP !== 0) {
+    return res.status(400).json({ error: 'invalid points amount', min: POINTS_CONVERT_MIN, step: POINTS_CONVERT_STEP });
+  }
+  const user = await store.getUserByPhone(phone);
+  if (!user) return res.status(401).json({ error: 'login required' });
+  const p = normPoints(user);
+  if (p.available < points) return res.status(400).json({ error: 'insufficient_points', available: p.available, locked: p.locked });
+  const ks = points / 2;
+  const ledger = pointsLedgerPush(p, { type: 'points_convert', points: -points, ks, note: 'Point ' + points + ' → ' + ks + ' Ks' });
+  await store.updateUserPoints(phone, { pointsAvailable: p.available - points, pointsLedger: ledger });
+  const w = await store.getWallet(phone);
+  w.balance += ks;
+  w.ledger.push({ type: 'points_convert', amount: ks, transferId: null, date: new Date().toISOString(), note: 'Point ' + points + ' လဲတာ' });
+  await store.saveWallet(phone, w);
+  res.json({ points, ks, available: p.available - points, locked: p.locked, balance: w.balance });
+}));
+
+// Admin: pool status + every user's points (for the Points tab).
+app.get('/api/admin/points', requireAdmin, ah(async (req, res) => {
+  const pool = await getPoolState();
+  const users = await store.listUsers();
+  const weekStart = pool.week;
+  const weekEnd = rangoonDateStr(new Date(new Date(weekStart + 'T00:00:00Z').getTime() + 6 * 24 * 60 * 60 * 1000));
+  res.json({
+    pool: { remaining: pool.remaining, size: POINTS_POOL_SIZE, week: pool.week, weekStart, weekEnd },
+    users: users.map(u => ({ phone: u.phone, name: u.name, available: u.pointsAvailable || 0, locked: u.pointsLocked || 0, streak: u.pointsStreak || 0, lastCheckin: u.pointsLastCheckin || '' })),
+  });
+}));
+
+// Admin adds or deducts points for one user, with a note (mirrors the
+// wallet adjustment). A credit follows the same lock rule as check-in
+// earnings: locked until the user's first approved top-up, usable after
+// that. A debit takes from the usable balance first, then the locked
+// balance, and is refused when the total is not enough.
+app.post('/api/admin/points/adjust', requireAdmin, ah(async (req, res) => {
+  const phone = String((req.body || {}).phone || '').trim();
+  const { type, amount, note } = req.body || {};
+  const amt = Number(amount);
+  if (!phone) return res.status(400).json({ error: 'phone required' });
+  if (type !== 'credit' && type !== 'debit') return res.status(400).json({ error: 'type must be credit or debit' });
+  if (!Number.isInteger(amt) || amt <= 0 || amt > POINTS_ADMIN_MAX) return res.status(400).json({ error: 'invalid amount' });
+  const user = await store.getUserByPhone(phone);
+  if (!user) return res.status(404).json({ error: 'not found' });
+  const p = normPoints(user);
+  const cleanNote = String(note || '').trim().slice(0, 200);
+  let available = p.available, locked = p.locked;
+  if (type === 'debit') {
+    if (available + locked < amt) return res.status(400).json({ error: 'insufficient_points', available, locked });
+    const fromAvailable = Math.min(available, amt);
+    available -= fromAvailable;
+    locked -= (amt - fromAvailable);
+  } else {
+    const unlocked = await hasApprovedTopup(phone);
+    if (unlocked) available += amt; else locked += amt;
+  }
+  const ledger = pointsLedgerPush(p, { type: type === 'credit' ? 'points_admin_credit' : 'points_admin_debit', points: type === 'credit' ? amt : -amt, note: cleanNote || (type === 'credit' ? 'Admin က Point ပေးတာ' : 'Admin က Point နှုတ်တာ') });
+  await store.updateUserPoints(phone, { pointsAvailable: available, pointsLocked: locked, pointsLedger: ledger });
+  res.json({ phone, available, locked });
+}));
+
 // Top-up requests for the logged-in customer
 app.get('/api/topups', requireAuth, ah(async (req, res) => {
   const phone = req.user.phone;
@@ -943,6 +1170,8 @@ app.post('/api/admin/topups/:id/approve', requireAdmin, ah(async (req, res) => {
   // Referral unlock: if this was the sender's first approved top-up and
   // they registered with a friend's code, both locked gifts unlock now.
   await maybeUnlockReferral(t.senderPhone);
+  // Day-points unlock: any locked check-in points become usable now.
+  await maybeUnlockPoints(t.senderPhone);
   res.json({ topup: { ...t, status: 'approved' }, balance: w.balance });
 }));
 

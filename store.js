@@ -51,7 +51,7 @@ const SEED_ZONES = [
   ['East Dagon', 4000], ['Shwepyitha', 4000],
 ].map(([name, fee]) => ({ name, fee }));
 
-const SEED_SETTINGS = { recipientName: 'LinLinAung', recipientPhone: '09680237595', freeThreshold: 30000, otherTownshipFee: 4000, announcement: '', aiEnabled: true };
+const SEED_SETTINGS = { recipientName: 'LinLinAung', recipientPhone: '09680237595', freeThreshold: 30000, otherTownshipFee: 4000, announcement: '', aiEnabled: true, pointsPoolRemaining: 100000, pointsPoolWeek: '' };
 
 function seedDb() {
   return {
@@ -81,6 +81,10 @@ class JsonStore {
         const db = JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
         if (!Array.isArray(db.users)) db.users = []; // migrate old db.json files
         if (!Array.isArray(db.chatMessages)) db.chatMessages = []; // chat added 2026-11-01
+        // Migrate old db.json files: day-point pool state (added 2026-11-06).
+        if (!db.settings) db.settings = {};
+        if (db.settings.pointsPoolRemaining === undefined) db.settings.pointsPoolRemaining = 100000;
+        if (db.settings.pointsPoolWeek === undefined) db.settings.pointsPoolWeek = '';
         return db;
       }
     } catch (e) { console.error('DB read failed, reseeding:', e.message); }
@@ -168,7 +172,20 @@ class JsonStore {
   }
   async getUserByPhone(phone) { return this.db.users.find(u => u.phone === phone) || null; }
   async createUser(u) { this.db.users.push(u); this._persist(); return u; }
-  async listUsers() { return this.db.users.map(u => ({ id: u.id, name: u.name, phone: u.phone, email: u.email || '', createdAt: u.createdAt, referralCode: u.referralCode || '', referredBy: u.referredBy || '' })); }
+  async listUsers() { return this.db.users.map(u => ({ id: u.id, name: u.name, phone: u.phone, email: u.email || '', createdAt: u.createdAt, referralCode: u.referralCode || '', referredBy: u.referredBy || '', pointsAvailable: u.pointsAvailable || 0, pointsLocked: u.pointsLocked || 0, pointsStreak: u.pointsStreak || 0, pointsLastCheckin: u.pointsLastCheckin || '' })); }
+  // Day points (added 2026-11-06): per-user points live on the user
+  // record — available points, locked points (until the first approved
+  // top-up), current streak, last check-in date (Asia/Rangoon), and a
+  // small points ledger (check-ins, converts, admin adjustments).
+  async updateUserPoints(phone, fields) {
+    const u = this.db.users.find(x => x.phone === phone);
+    if (!u) return null;
+    for (const k of ['pointsAvailable', 'pointsLocked', 'pointsStreak', 'pointsLastCheckin', 'pointsLedger']) {
+      if (fields[k] !== undefined) u[k] = fields[k];
+    }
+    this._persist();
+    return u;
+  }
   async getUserByReferralCode(code) {
     const c = String(code || '').trim().toUpperCase();
     if (!c) return null;
@@ -354,6 +371,9 @@ function userFromRow(r) {
     createdAt: new Date(r.created_at).toISOString(),
     photo: r.photo || '', email: r.email || '', emailVerified: !!r.email_verified,
     referralCode: r.referral_code || '', referredBy: r.referred_by || '',
+    pointsAvailable: r.points_available || 0, pointsLocked: r.points_locked || 0,
+    pointsStreak: r.points_streak || 0, pointsLastCheckin: r.points_last_checkin || '',
+    pointsLedger: r.points_ledger || [],
   };
 }
 function chatMessageFromRow(r) {
@@ -394,6 +414,17 @@ class PgStore {
     // the 3,000 Ks gift sits here (not in balance, so it cannot be spent)
     // until the referred friend's first top-up is approved.
     await this.pool.query('ALTER TABLE wallet_entries ADD COLUMN IF NOT EXISTS locked INTEGER NOT NULL DEFAULT 0');
+    // Migration: daily check-in points (added 2026-11-06) — per-user
+    // points live on the user record (available / locked until the first
+    // approved top-up / streak / last check-in date / points ledger),
+    // and the shared Day 7 pool lives on the settings row.
+    await this.pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS points_available INTEGER NOT NULL DEFAULT 0');
+    await this.pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS points_locked INTEGER NOT NULL DEFAULT 0');
+    await this.pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS points_streak INTEGER NOT NULL DEFAULT 0');
+    await this.pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS points_last_checkin TEXT');
+    await this.pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS points_ledger JSONB NOT NULL DEFAULT '[]'::jsonb");
+    await this.pool.query('ALTER TABLE settings ADD COLUMN IF NOT EXISTS points_pool_remaining INTEGER NOT NULL DEFAULT 100000');
+    await this.pool.query('ALTER TABLE settings ADD COLUMN IF NOT EXISTS points_pool_week TEXT');
     // Seed once, when tables are empty.
     const { rows } = await this.pool.query('SELECT COUNT(*)::int AS n FROM products');
     if (rows[0].n === 0) {
@@ -453,14 +484,14 @@ class PgStore {
   async getSettings() {
     const { rows } = await this.pool.query('SELECT * FROM settings WHERE id = 1');
     const r = rows[0];
-    return { recipientName: r.recipient_name, recipientPhone: r.recipient_phone, freeThreshold: r.free_threshold, otherTownshipFee: r.other_township_fee, announcement: r.announcement || '', aiEnabled: r.ai_enabled !== false, gmailRefreshToken: r.gmail_refresh_token || '' };
+    return { recipientName: r.recipient_name, recipientPhone: r.recipient_phone, freeThreshold: r.free_threshold, otherTownshipFee: r.other_township_fee, announcement: r.announcement || '', aiEnabled: r.ai_enabled !== false, gmailRefreshToken: r.gmail_refresh_token || '', pointsPoolRemaining: r.points_pool_remaining === null || r.points_pool_remaining === undefined ? 100000 : r.points_pool_remaining, pointsPoolWeek: r.points_pool_week || '' };
   }
   async updateSettings(fields) {
     const cur = await this.getSettings();
     const next = { ...cur, ...fields };
     await this.pool.query(
-      'UPDATE settings SET recipient_name=$1, recipient_phone=$2, free_threshold=$3, other_township_fee=$4, announcement=$5, ai_enabled=$6, gmail_refresh_token=$7 WHERE id=1',
-      [next.recipientName, next.recipientPhone, next.freeThreshold, next.otherTownshipFee, next.announcement || '', next.aiEnabled !== false, next.gmailRefreshToken || '']);
+      'UPDATE settings SET recipient_name=$1, recipient_phone=$2, free_threshold=$3, other_township_fee=$4, announcement=$5, ai_enabled=$6, gmail_refresh_token=$7, points_pool_remaining=$8, points_pool_week=$9 WHERE id=1',
+      [next.recipientName, next.recipientPhone, next.freeThreshold, next.otherTownshipFee, next.announcement || '', next.aiEnabled !== false, next.gmailRefreshToken || '', next.pointsPoolRemaining === undefined || next.pointsPoolRemaining === null ? 100000 : next.pointsPoolRemaining, next.pointsPoolWeek || '']);
     return next;
   }
   async listOrders() {
@@ -610,13 +641,13 @@ class PgStore {
   }
   async createUser(u) {
     await this.pool.query(
-      'INSERT INTO users (id, name, phone, password_hash, salt, created_at, email, email_verified, referral_code, referred_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
-      [u.id, u.name, u.phone, u.passwordHash, u.salt, u.createdAt, u.email || '', !!u.emailVerified, u.referralCode || null, u.referredBy || null]);
+      'INSERT INTO users (id, name, phone, password_hash, salt, created_at, email, email_verified, referral_code, referred_by, points_available, points_locked, points_streak, points_last_checkin, points_ledger) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)',
+      [u.id, u.name, u.phone, u.passwordHash, u.salt, u.createdAt, u.email || '', !!u.emailVerified, u.referralCode || null, u.referredBy || null, u.pointsAvailable || 0, u.pointsLocked || 0, u.pointsStreak || 0, u.pointsLastCheckin || null, JSON.stringify(u.pointsLedger || [])]);
     return u;
   }
   async listUsers() {
-    const { rows } = await this.pool.query('SELECT id, name, phone, email, created_at, referral_code, referred_by FROM users ORDER BY created_at DESC');
-    return rows.map(r => ({ id: r.id, name: r.name, phone: r.phone, email: r.email || '', createdAt: new Date(r.created_at).toISOString(), referralCode: r.referral_code || '', referredBy: r.referred_by || '' }));
+    const { rows } = await this.pool.query('SELECT id, name, phone, email, created_at, referral_code, referred_by, points_available, points_locked, points_streak, points_last_checkin FROM users ORDER BY created_at DESC');
+    return rows.map(r => ({ id: r.id, name: r.name, phone: r.phone, email: r.email || '', createdAt: new Date(r.created_at).toISOString(), referralCode: r.referral_code || '', referredBy: r.referred_by || '', pointsAvailable: r.points_available || 0, pointsLocked: r.points_locked || 0, pointsStreak: r.points_streak || 0, pointsLastCheckin: r.points_last_checkin || '' }));
   }
   async getUserByReferralCode(code) {
     const c = String(code || '').trim().toUpperCase();
@@ -642,6 +673,21 @@ class PgStore {
   async updateUserEmail(phone, email) {
     const { rows } = await this.pool.query(
       'UPDATE users SET email=$2, email_verified=$3 WHERE phone=$1 RETURNING *', [phone, email || '', !!email]);
+    return rows.length ? userFromRow(rows[0]) : null;
+  }
+  // Day points (added 2026-11-06): patch only the whitelisted points
+  // columns on the user record.
+  async updateUserPoints(phone, fields) {
+    const cols = { pointsAvailable: 'points_available', pointsLocked: 'points_locked', pointsStreak: 'points_streak', pointsLastCheckin: 'points_last_checkin', pointsLedger: 'points_ledger' };
+    const sets = [], vals = [phone];
+    for (const k of Object.keys(cols)) {
+      if (fields[k] === undefined) continue;
+      vals.push(k === 'pointsLedger' ? JSON.stringify(fields[k] || []) : fields[k]);
+      sets.push(cols[k] + '=$' + vals.length);
+    }
+    if (!sets.length) return this.getUserByPhone(phone);
+    const { rows } = await this.pool.query(
+      'UPDATE users SET ' + sets.join(', ') + ' WHERE phone=$1 RETURNING *', vals);
     return rows.length ? userFromRow(rows[0]) : null;
   }
   async deleteUser(phone) {
