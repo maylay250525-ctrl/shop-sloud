@@ -197,6 +197,15 @@ body.dark #bottomNav button.active{background:#3a2f0b}
       <input id="wPhone" placeholder="ဖုန်း / Phone" disabled>
       <div id="wBalance" class="muted"></div>
       <div id="wLedger"></div>
+      <h3>⭐ Point များ</h3>
+      <div id="wPoints" class="muted">—</div>
+      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+        <input id="pcAmount" type="number" placeholder="Point ပမာဏ (အနည်းဆုံး 100, 100 စီ)">
+        <button class="primary" id="pcBtn">⭐ Point လဲမည်</button>
+      </div>
+      <div class="muted" style="font-size:12px;margin-top:4px">1,000 point = 500 Ks · 100 point စီ လဲလို့ရတယ်</div>
+      <div id="pcMsg"></div>
+      <div id="wPointsHistory" class="muted" style="margin-top:6px"></div>
       <h3 data-t="topup">ငွေဖြည့်မည် (Top-up)</h3>
       <input id="tAmount" type="number" placeholder="ပမာဏ (Ks) — အနိမ့်ဆုံး 5,000">
       <select id="tMethod"><option value="kpay">KBZPay</option><option value="wavepay">WavePay</option></select>
@@ -214,10 +223,11 @@ body.dark #bottomNav button.active{background:#3a2f0b}
   <!-- ============ PROFILE VIEW ============ -->
   <div id="profileView" class="hidden">
     <div class="card">
-      <div style="text-align:center">
+      <div style="text-align:center"><div style="position:relative;display:inline-block">
         <img id="pPhotoPrev" class="hidden" style="width:120px;height:120px;object-fit:cover;border-radius:50%;cursor:pointer" onclick="openPhotoMenu()">
         <div id="pPhotoPlaceholder" class="hidden" style="width:120px;height:120px;border-radius:50%;background:#e2e8f0;display:inline-flex;align-items:center;justify-content:center;font-size:56px;cursor:pointer" onclick="openPhotoMenu()">👤</div>
-      </div>
+        <button id="checkinBtn" onclick="openCheckin()" title="နေ့စဉ် Point ယူမည်" style="position:absolute;top:-4px;right:-6px;width:38px;height:38px;border-radius:50%;border:2px solid #fff;background:linear-gradient(135deg,#fbbf24,#d4af37);font-size:19px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.35);padding:0;line-height:1">🎁<span id="checkinDot" class="hidden" style="position:absolute;top:-3px;right:-3px;width:12px;height:12px;border-radius:50%;background:#e11d48;border:2px solid #fff"></span></button>
+      </div></div>
       <h2 data-t="profile" style="text-align:center">Profile — ပရိုဖိုင်</h2>
       <div id="profileSummary"></div>
       <input id="pName" placeholder="နာမည် / Name" disabled>
@@ -311,6 +321,7 @@ function showView(v){
   document.querySelectorAll('#bottomNav button').forEach(b=>b.classList.toggle('active',b.dataset.view===v));
   if(v==='wallet'&&typeof loadWallet==='function'){loadWallet();startWalletRefresh()}else if(typeof stopWalletRefresh==='function')stopWalletRefresh();
   if(v==='profile'&&typeof loadMyOrders==='function'){loadMyOrders();startOrdersRefresh()}else if(typeof stopOrdersRefresh==='function')stopOrdersRefresh();
+  if(v==='profile'&&typeof loadCheckinState==='function')loadCheckinState();
   if(v==='profile'&&typeof loadChatUnread==='function')loadChatUnread();
   if(v==='cart'&&lastPlacedOrder){refreshOrderMsg();startOrderMsgRefresh()}else if(typeof stopOrderMsgRefresh==='function')stopOrderMsgRefresh();
   window.scrollTo({top:0});
@@ -674,7 +685,29 @@ $('#tSubmit').addEventListener('click',async()=>{
 function walletTypeLabel(l){
   if(l.type==='referral_bonus_locked')return '🎁 လက်ဆောင် (သော့ခတ်ထားတယ်)';
   if(l.type==='referral_bonus_unlocked')return '🎁 လက်ဆောင် သုံးလို့ရပြီ';
+  if(l.type==='points_convert')return '⭐ Point လဲပြီး ငွေရတာ';
   return l.type;
+}
+function pointsHistoryLabel(l){
+  if(l.type==='points_checkin')return `🎁 Check-in Day ${l.day||''} — +${l.points} point`;
+  if(l.type==='points_convert')return `⭐ Point ${-l.points} လဲပြီး ${l.ks} Ks ရတာ`;
+  if(l.type==='points_admin_credit')return `⭐ Admin က Point ${l.points} ပေးတာ`;
+  if(l.type==='points_admin_debit')return `⭐ Admin က Point ${-l.points} နှုတ်တာ`;
+  if(l.type==='points_unlocked')return `🔓 Point ${l.points} သုံးလို့ရပြီ`;
+  return l.type;
+}
+// Points display in the Wallet tab (available + locked, like the referral
+// locked gift line) and the convert section. Only #wPoints /
+// #wPointsHistory are re-rendered — the convert input #pcAmount is never
+// touched, so typing in it is never wiped by the 1s refresh.
+function renderPoints(p){
+  if(!p)return;
+  const avail=p.available||0, locked=p.locked||0;
+  $('#wPoints').innerHTML=`<b>⭐ Point: ${avail.toLocaleString()}</b>`+(locked>0?`<br><span class="muted">🔒 Point (သော့ခတ်ထားတယ်): ${locked.toLocaleString()} — ပထမဆုံး ငွေသွင်း (အနိမ့်ဆုံး 5,000 Ks) အတည်ပြုပြီးမှ သုံးလို့ရမယ်</span>`:'');
+  $('#wPointsHistory').innerHTML=(p.history||[]).map(l=>`<div class="muted">${(l.date||'').slice(0,10)} · ${pointsHistoryLabel(l)}${l.note&&l.type!=='points_checkin'?` — ${esc(l.note)}`:''}</div>`).join('')||'';
+}
+async function loadPoints(){
+  try{const p=await api('/api/points');renderPoints(p);return p}catch(e){return null}
 }
 function renderWallet(w){
   const locked=w.locked||0;
@@ -688,6 +721,7 @@ async function loadWallet(){
   try{
     const w=await api('/api/wallet');
     renderWallet(w);
+    loadPoints();
     loadMyTopups();
   }catch(e){$('#wBalance').innerHTML=`<div class="notice">❌ ${esc(e.message)}</div>`}
 }
@@ -702,9 +736,21 @@ async function refreshWalletBalance(){
   try{
     const w=await api('/api/wallet');
     renderWallet(w);
+    loadPoints();
     loadMyTopups();
   }catch(e){}
 }
+// Point convert: 1,000 point = 500 Ks, in multiples of 100 points.
+$('#pcBtn').addEventListener('click',async()=>{
+  const pts=Number($('#pcAmount').value);
+  if(!Number.isInteger(pts)||pts<100||pts%100!==0){$('#pcMsg').innerHTML='<div class="notice">❌ 100 point စီ လဲလို့ရတယ် (အနည်းဆုံး 100)</div>';return}
+  try{
+    const r=await api('/api/points/convert',{method:'POST',body:JSON.stringify({points:pts})});
+    $('#pcMsg').innerHTML=`<div class="notice">✅ ${r.points.toLocaleString()} point → ${fmt(r.ks)} ရပြီ — Wallet ထဲ ရောက်ပြီ</div>`;
+    $('#pcAmount').value='';
+    loadPoints();loadWallet();
+  }catch(e){$('#pcMsg').innerHTML=`<div class="notice">❌ ${esc(String(e.message||'').includes('insufficient')?'Point သုံးလို့ရတာ မလောက်ဘူး':e.message)}</div>`}
+});
 async function loadMyTopups(){
   try{
     const list=await api('/api/topups');
@@ -994,6 +1040,65 @@ window.shareReferral=async()=>{
   try{await navigator.clipboard.writeText(url);$('#refMsg').textContent='✅ လင့်ခ် ကူးပြီးပြီ — သူငယ်ချင်းကို ပို့လိုက်ပါ';}
   catch(e){$('#refMsg').textContent=url}
 };
+// ---- Daily check-in points (Gift Box Hero dialog) ----
+// The small gold dot on the 🎁 icon (top-right of the Profile photo)
+// shows while today's check-in is unclaimed. Tapping the icon opens the
+// dialog: 7 streak dots, today's reward, a claim button. Day 7 reads
+// "100,000 point ရရှိနိုင်ရန် အခွင့်အရေး" (a chance to win up to
+// 100,000 points).
+let pointsState=null;
+async function loadCheckinState(){
+  try{pointsState=await api('/api/points');updateCheckinDot()}catch(e){}
+}
+function updateCheckinDot(){
+  const d=$('#checkinDot');if(!d)return;
+  d.classList.toggle('hidden',!(pointsState&&!pointsState.claimedToday));
+}
+async function openCheckin(){
+  await loadCheckinState();
+  renderCheckinDialog();
+  $('#checkinDialog').classList.remove('hidden');
+}
+function closeCheckin(){$('#checkinDialog').classList.add('hidden')}
+function renderCheckinDialog(){
+  const p=pointsState||{};
+  const streak=p.streak||0;
+  const dots=[1,2,3,4,5,6,7].map(d=>{
+    const done=d<=streak, cur=!p.claimedToday&&p.nextDay===d;
+    const bg=done?'background:linear-gradient(135deg,#fbbf24,#d4af37);color:#fff;border-color:#d4af37':(cur?'background:#fef3c7;border-color:#d4af37':'background:#f1f5f9;border-color:#e2e8f0');
+    return `<div style="width:36px;height:36px;border-radius:50%;border:2px solid;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:${d===7?'16px':'14px'};${bg}">${d===7?'🎁':d}</div>`;
+  }).join('');
+  $('#checkinDots').innerHTML=dots;
+  const btn=$('#checkinClaimBtn'), msg=$('#checkinMsg'), rw=$('#checkinReward');
+  if(!pointsState){rw.textContent='ဖွင့်လို့မရဘူး — ပြန်စမ်းပါ';btn.classList.add('hidden');return}
+  if(p.claimedToday){
+    rw.textContent='ဒီနေ့ ယူပြီးပြီ ✓';
+    msg.innerHTML=`<div class="muted">Streak: ${streak} ရက် — မနက်ဖြန် Day ${streak+1} ပြန်ယူပါ</div>`;
+    btn.classList.add('hidden');
+  }else{
+    btn.classList.remove('hidden');btn.disabled=false;
+    msg.innerHTML='';
+    if(p.isDay7){rw.textContent='ဒီနေ့ Day 7 🎁 — ဆုကြီး ရမယ့်နေ့!'}
+    else{rw.textContent=`ဒီနေ့ Day ${p.nextDay} — ${p.nextReward} point ရမယ်`}
+  }
+}
+async function claimCheckin(){
+  const btn=$('#checkinClaimBtn');
+  btn.disabled=true;
+  try{
+    const r=await api('/api/points/checkin',{method:'POST'});
+    pointsState={...pointsState,claimedToday:true,streak:r.streak,available:r.available,locked:r.locked};
+    updateCheckinDot();
+    renderCheckinDialog();
+    $('#checkinReward').textContent=r.isDay7?`🎉 Day 7 ဆုကြီး — ${r.points.toLocaleString()} point ရပြီ!`:`✅ +${r.points.toLocaleString()} point ရပြီ!`;
+    if(r.isDay7)$('#checkinMsg').innerHTML='<div class="muted">Streak ပြန်စပြီ — မနက်ဖြန် Day 1 က ပြန်ယူပါ</div>';
+    loadPoints();
+  }catch(e){
+    const m=String(e.message||'');
+    $('#checkinMsg').innerHTML=`<div class="notice">❌ ${m.includes('already_checked_in')?'ဒီနေ့ ယူပြီးပြီ ✓':'မအောင်မြင်ဘူး — ပြန်စမ်းပါ'}</div>`;
+    btn.disabled=false;
+  }
+}
 function prefillProfile(){
   if(!authUser)return;
   $('#coName').value=profile.name||authUser.name;
@@ -1091,6 +1196,20 @@ async function initAuth(){
 initAuth();
 </script>
 <!-- Profile photo menu + full-screen viewer -->
+<!-- ============ DAILY CHECK-IN DIALOG (Gift Box Hero) ============ -->
+<div id="checkinDialog" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:85;display:flex;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)closeCheckin()">
+  <div style="background:#fff;border-radius:20px;max-width:360px;width:100%;padding:24px 20px;text-align:center;box-shadow:0 12px 40px rgba(0,0,0,.35)">
+    <div style="font-size:64px;line-height:1">🎁</div>
+    <h2 style="margin:8px 0 4px">နေ့စဉ် Point ယူမယ်</h2>
+    <p class="muted" style="margin:0 0 8px">နေ့တိုင်း ဝင်ပြီး Point ယူ — 7 ရက် ဆက်တိုက် ပြည့်ရင် ဆုကြီး ရမယ်! တစ်ရက် လွတ်သွားရင် Day 1 က ပြန်စမယ်။</p>
+    <div id="checkinDots" style="display:flex;gap:6px;justify-content:center;margin:12px 0"></div>
+    <div id="checkinReward" style="font-size:18px;font-weight:700;margin:8px 0"></div>
+    <div id="checkinDay7" class="muted" style="margin:6px 0">Day 7 🎁 — 100,000 point ရရှိနိုင်ရန် အခွင့်အရေး</div>
+    <button class="primary" id="checkinClaimBtn" onclick="claimCheckin()" style="width:100%;padding:12px;font-size:16px">🎁 Point ယူမည်</button>
+    <div id="checkinMsg" style="margin-top:10px"></div>
+    <button onclick="closeCheckin()" style="margin-top:10px;padding:10px 18px;background:none;border:none;font-size:15px;color:#64748b;cursor:pointer">ပိတ်မယ်</button>
+  </div>
+</div>
 <div id="photoMenu" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:80;display:flex;align-items:flex-end;justify-content:center" onclick="if(event.target===this)closePhotoMenu()">
   <div style="background:#fff;border-radius:16px 16px 0 0;width:100%;max-width:480px;padding:8px 8px 16px">
     <button id="pmView" onclick="viewMyPhoto()" style="width:100%;padding:14px;text-align:left;background:none;border:none;border-bottom:1px solid #eee;font-size:16px">🖼️ ပုံကို ကြည့်မယ်</button>

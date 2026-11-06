@@ -126,7 +126,7 @@ async function api(p,o={}){const r=await fetch(p,{...o,headers:{'Content-Type':'
 async function loadProducts(){products=await aapi('/api/admin/products')}
 
 $('#themeBtn').addEventListener('click',()=>document.body.classList.toggle('dark'));
-const ADMIN_TABS=['overview','products','orders','delivery','wallet','topups','chats','users','referrals','settings'];
+const ADMIN_TABS=['overview','products','orders','delivery','wallet','topups','chats','users','referrals','points','settings'];
 $('#adminLogin').addEventListener('click',async()=>{
   try{await api('/api/admin/login',{method:'POST',body:JSON.stringify({passcode:$('#adminPass').value})});adminPass=$('#adminPass').value;saveAdminSession();enterAdmin();}
   catch(e){$('#adminLoginMsg').textContent=String(e.message||'').includes('locked')?'🔒 မှားတာ များသွားလို့ 15 မိနစ် ပိတ်ထားတယ် — ခဏစောင့်ပြီး ပြန်ဝင်ပါ':'Passcode မှားနေတယ် / Wrong passcode'}
@@ -320,6 +320,10 @@ async function loadAdmin(){
     }else if(adminTab==='referrals'){
       const list=await aapi('/api/admin/referrals');
       setAdminContent(`<div class="card"><h3>🎁 Referrals — သူငယ်ချင်း ညွှန်းတာ</h3><p class="muted">သူငယ်ချင်း register လုပ်တာနဲ့ နှစ်ယောက်လုံး wallet ထဲ 3,000 Ks စီ (သော့ခတ်ထားတယ်) ဝင်တယ်။ သူငယ်ချင်း ပထမဆုံး ငွေသွင်း အတည်ပြုပြီးမှ နှစ်ယောက်လုံးရဲ့ လက်ဆောင် သုံးလို့ရတယ်။</p><div class="table-scroll"><table><tr><th>သူငယ်ချင်း (အသစ်)</th><th>ညွှန်းသူ</th><th>လက်ဆောင်</th><th>Status</th><th>Joined</th></tr>${list.map(r=>`<tr><td>${esc(r.friendName)}<br><span class="muted">${esc(r.friendPhone)}</span></td><td>${esc(r.referrerName)}<br><span class="muted">${esc(r.referrerPhone)}</span></td><td>${fmt(r.amount)} × 2</td><td><span class="badge ${r.status}">${r.status==='unlocked'?'🔓 သုံးလို့ရပြီ':'🔒 သော့ခတ်ထားတယ်'}</span></td><td class="muted">${(r.friendJoined||'').slice(0,10)}</td></tr>`).join('')||'<tr><td colspan="5">—</td></tr>'}</table></div></div>`);
+    }else if(adminTab==='points'){
+      const d=await aapi('/api/admin/points');
+      setAdminContent(`<div class="card"><h3>⭐ Day 7 Pool — ဆုကြီး Pool</h3><div class="stats"><div class="stat"><span class="stat-label">🎁 ကျန်တဲ့ Pool</span><span class="stat-num">${d.pool.remaining.toLocaleString()} pt</span></div><div class="stat"><span class="stat-label">📅 ဒီအပတ်</span><span class="stat-num" style="font-size:15px">${d.pool.weekStart} → ${d.pool.weekEnd}</span></div></div><p class="muted">Pool က ${d.pool.size.toLocaleString()} point — တနင်္လာနေ့ 00:00 မှာ အလိုလို ပြန်ဖြည့်တယ်၊ ကုန်သွားရင်လည်း ချက်ချင်း ပြန်ဖြည့်တယ်။ Day 7 ပြည့်တဲ့ ဝယ်သူက 500 ကနေ ကျန်တဲ့ Pool အထိ ကျပန်း ရတယ် (အနည်းဆုံး 500 အာမခံတယ်)။</p></div>`+
+      `<div class="card"><h3>⭐ ဝယ်သူများ၏ Point</h3>${d.users.map(u=>`<div style="border-bottom:1px solid #eee;padding:10px 0"><b>${esc(u.name)}</b> · <span class="muted">${esc(u.phone)}</span> — သုံးလို့ရတာ <b>${u.available.toLocaleString()} pt</b>${u.locked>0?` · <span class="muted">🔒 ${u.locked.toLocaleString()} pt (သော့ခတ်ထားတယ်)</span>`:''} · Streak ${u.streak} ရက်${u.lastCheckin?` · နောက်ဆုံး ${(u.lastCheckin||'').slice(0,10)}`:''}<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><input id="pa-${esc(u.phone)}" type="number" placeholder="Point ပမာဏ" style="width:120px"><input id="pn-${esc(u.phone)}" placeholder="မှတ်ချက်" style="flex:1;min-width:140px"><button class="primary" onclick="pointsAdjust('${esc(u.phone)}','credit')">➕ Point ထည့်မယ်</button><button class="warn" onclick="pointsAdjust('${esc(u.phone)}','debit')">➖ Point နှုတ်မယ်</button></div><div id="pam-${esc(u.phone)}" class="muted"></div></div>`).join('')||'—'}</div>`);
     }else if(adminTab==='settings'){
       const s=await aapi('/api/admin/settings');
       setAdminContent(`<div class="card"><h3>Recipient (KPay / WavePay)</h3><label class="muted">Admin နာမည်</label><input id="sName" value="${esc(s.recipientName)}"><label class="muted">Admin ဖုန်း</label><input id="sPhone" value="${esc(s.recipientPhone)}"><label class="muted">ပို့ခ အခမဲ့ ဖြစ်မည့် ပမာဏ (Ks) — အော်ဒါ ဒီပမာဏ ပြည့်ရင် ပို့ခ 0 Ks</label><input id="sFree" type="number" value="${s.freeThreshold}"><label class="muted">အခြားမြို့နယ် ပို့ခ (Ks)</label><input id="sOther" type="number" value="${s.otherTownshipFee}"><label class="muted">ကြေညာချက် — ဆိုင်အပေါ်ဆုံးမှာ ညာကနေ ဘယ်ကို ပြေးနေတဲ့ စာတန်း (ဗလာထားရင် မပေါ်ဘူး)</label><textarea id="sAnnounce" rows="2">${esc(s.announcement||'')}</textarea><label style="display:block;margin-top:8px"><input type="checkbox" id="sAi" ${s.aiEnabled===false?'':'checked'}> ✨ AI အကြံပြုချက် ဖွင့်မယ် (Chats မှာ Admin ကို အဖြေ စဉ်းစားပေးတာ)</label><button class="primary" onclick="saveSettings()">Save</button><div id="sMsg"></div></div>`+
@@ -381,6 +385,23 @@ window.walletAdjust=async(phone,dir)=>{
     setTimeout(loadAdmin,1200);
   }catch(e){
     if(msgEl)msgEl.textContent=String(e.message||'').includes('insufficient')?'❌ လက်ကျန်မလောက်ဘူး':('❌ '+(e.message||'မအောင်မြင်ဘူး'));
+  }
+};
+// Admin points adjustment: add (credit) or deduct (debit) points for a
+// user, with a note. Mirrors walletAdjust above.
+window.pointsAdjust=async(phone,dir)=>{
+  const amtEl=$('#pa-'+phone), noteEl=$('#pn-'+phone), msgEl=$('#pam-'+phone);
+  const amount=Number(amtEl?amtEl.value:0);
+  const note=noteEl?noteEl.value.trim():'';
+  if(msgEl)msgEl.textContent='';
+  if(!amount||amount<=0||!Number.isInteger(amount)){if(msgEl)msgEl.textContent='Point ပမာဏ (ကိန်းပြည့်) ထည့်ပါ';return}
+  try{
+    const r=await aapi('/api/admin/points/adjust',{method:'POST',body:JSON.stringify({phone,type:dir,amount,note})});
+    if(amtEl)amtEl.value='';if(noteEl)noteEl.value='';
+    if(msgEl)msgEl.textContent=`✅ ပြီးပြီ — သုံးလို့ရတာ ${r.available.toLocaleString()} pt${r.locked>0?` · 🔒 ${r.locked.toLocaleString()} pt`:''}`;
+    setTimeout(loadAdmin,1200);
+  }catch(e){
+    if(msgEl)msgEl.textContent=String(e.message||'').includes('insufficient')?'❌ Point မလောက်ဘူး':('❌ '+(e.message||'မအောင်မြင်ဘူး'));
   }
 };
 // Admin chat: 1s poll of the open conversation; only the message list is
